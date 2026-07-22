@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import KitchenCanvas from './components/KitchenCanvas';
-import BottomBar from './components/BottomBar';
-import BottomSheet from './components/BottomSheet';
-import ContextPanel from './components/ContextPanel';
-import RoomShapeDesigner from './components/RoomShapeDesigner';
-import ExportPanel from './components/ExportPanel';
-import { useStore } from './store/useStore';
-import type { Vec2 } from './domain/types';
+import KitchenCanvas from '@/components/KitchenCanvas';
+import BottomBar from '@/components/BottomBar';
+import BottomSheet from '@/components/BottomSheet';
+import ContextPanel from '@/components/ContextPanel';
+import RoomShapeDesigner from '@/components/RoomShapeDesigner';
+import ExportPanel from '@/components/ExportPanel';
+import { useStore } from '@/store/useStore';
+import type { Vec2 } from '@/domain/types';
+import './kitchenplan.css';
 
 export default function App() {
   const screen = useStore((s) => s.screen);

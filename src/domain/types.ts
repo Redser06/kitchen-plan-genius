@@ -98,3 +98,7 @@ export interface DesignAnalysis {
   walkway: { clearance: number; status: Severity } | null;
   issues: AnalysisIssue[];
 }
+
+export type ViewMode = "2d" | "3d" | "walk";
+export type SheetTab = "components" | "measure" | "materials" | "fixtures" | "analysis" | null;
+

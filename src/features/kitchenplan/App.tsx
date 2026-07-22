@@ -23,6 +23,7 @@ function useKitchenPlanStylesheet() {
 
 
 export default function App() {
+  useKitchenPlanStylesheet();
   const screen = useStore((s) => s.screen);
   const load = useStore((s) => s.load);
   const undo = useStore((s) => s.undo);

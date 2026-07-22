@@ -2,7 +2,7 @@
 // KitchenPlan — Zustand Store (v3: fixtures, materials, walk mode, export)
 // ============================================================================
 
-import create from 'zustand';
+import { create } from 'zustand';
 import type { KitchenDesign, Carcass, Furniture, Fixture, Vec2, DesignAnalysis, Materials, ColourScheme } from '../domain/types';
 
 function defaultDesign(): KitchenDesign {

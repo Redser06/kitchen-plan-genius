@@ -7,6 +7,19 @@ import RoomShapeDesigner from '@/components/RoomShapeDesigner';
 import ExportPanel from '@/components/ExportPanel';
 import { useStore } from '@/store/useStore';
 import type { Vec2 } from '@/domain/types';
+import kitchenplanCssUrl from './kitchenplan.css?url';
+
+function useKitchenPlanStylesheet() {
+  useEffect(() => {
+    const id = 'kitchenplan-stylesheet';
+    if (document.getElementById(id)) return;
+    const link = document.createElement('link');
+    link.id = id;
+    link.rel = 'stylesheet';
+    link.href = kitchenplanCssUrl;
+    document.head.appendChild(link);
+  }, []);
+}
 
 
 export default function App() {

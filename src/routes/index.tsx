@@ -1,24 +1,55 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { lazy, Suspense, useEffect, useState } from "react";
 
-// No head() here: the home route inherits title/description/og/twitter from
-// __root.tsx, and ships no og:image so serve-time hosting can inject the
-// project's social preview (explicit og:image or latest screenshot).
+const KitchenPlanApp = lazy(() => import("@/features/kitchenplan/App"));
+
 export const Route = createFileRoute("/")({
+  head: () => ({
+    meta: [
+      { title: "KitchenPlan — Design your kitchen" },
+      {
+        name: "description",
+        content:
+          "KitchenPlan is a browser-based kitchen planner: sketch the room, place units, appliances and fixtures, and check clearances in 2D, 3D and walk-through views.",
+      },
+      { property: "og:title", content: "KitchenPlan — Design your kitchen" },
+      {
+        property: "og:description",
+        content:
+          "Design a kitchen layout in the browser — rooms, units, appliances, fixtures and clearances.",
+      },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
+    ],
+  }),
   component: Index,
 });
 
-// IMPORTANT: Replace this placeholder. See ./README.md for routing conventions.
 function Index() {
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => setHydrated(true), []);
+
+  if (!hydrated) {
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "#faf7f2",
+          color: "#5b4a38",
+          fontFamily: "system-ui, sans-serif",
+        }}
+      >
+        Loading KitchenPlan…
+      </div>
+    );
+  }
+
   return (
-    <div
-      className="flex min-h-screen items-center justify-center"
-      style={{ backgroundColor: "#fcfbf8" }}
-    >
-      <img
-        data-lovable-blank-page-placeholder="REMOVE_THIS"
-        src="https://cdn.gpteng.co/blank-app-v1.svg"
-        alt="Your app will live here!"
-      />
-    </div>
+    <Suspense fallback={null}>
+      <KitchenPlanApp />
+    </Suspense>
   );
 }

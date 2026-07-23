@@ -16,7 +16,7 @@ export const Route = createFileRoute("/")({
       {
         property: "og:description",
         content:
-          "Design a kitchen layout in the browser — rooms, units, appliances, fixtures and clearances.",
+          "KitchenPlan is a browser-based kitchen planner: sketch the room, place units, appliances and fixtures, and check clearances in 2D, 3D and walk-through views.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },

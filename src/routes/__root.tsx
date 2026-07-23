@@ -77,14 +77,18 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Lovable App" },
-      { name: "description", content: "Lovable Generated Project" },
+      { title: "KitchenPlan — Design your kitchen" },
+      { name: "description", content: "KitchenPlan is a browser-based kitchen planner: sketch the room, place units, appliances and fixtures, and check clearances in 2D, 3D and walk-through views." },
       { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Lovable App" },
-      { property: "og:description", content: "Lovable Generated Project" },
+      { property: "og:title", content: "KitchenPlan — Design your kitchen" },
+      { property: "og:description", content: "KitchenPlan is a browser-based kitchen planner: sketch the room, place units, appliances and fixtures, and check clearances in 2D, 3D and walk-through views." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:site", content: "@Lovable" },
+      { name: "twitter:title", content: "KitchenPlan — Design your kitchen" },
+      { name: "twitter:description", content: "KitchenPlan is a browser-based kitchen planner: sketch the room, place units, appliances and fixtures, and check clearances in 2D, 3D and walk-through views." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/bda3201b-776e-4cfc-b798-b3efc8cd4b75/id-preview-48940f0a--7b5a15ba-b916-420f-bd71-4383cc185981.lovable.app-1784757529935.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/bda3201b-776e-4cfc-b798-b3efc8cd4b75/id-preview-48940f0a--7b5a15ba-b916-420f-bd71-4383cc185981.lovable.app-1784757529935.png" },
     ],
     links: [
       {

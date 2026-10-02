@@ -107,7 +107,8 @@ describe("computeAnalysis", () => {
     const turned = computeAnalysis(triangleLayout(90));
     const flat = computeAnalysis(triangleLayout(0));
 
-    expect(turned.triangle?.sink).toEqual({ x: -250, y: 500 });
+    expect(turned.triangle?.sink.x).toBeCloseTo(-250, 6);
+    expect(turned.triangle?.sink.y).toBeCloseTo(500, 6);
     expect(turned.triangle?.hob).toEqual({ x: 2700, y: 300 });
     expect(turned.triangle?.fridge).toEqual({ x: 1500, y: 2100 });
     expect(turned.triangle?.status).toBe("warning");

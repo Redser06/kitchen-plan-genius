@@ -4,6 +4,7 @@
 // plan Y becomes world Z. Wall and opening math stays private; the renderer
 // only sees the floor polygon, collision solids, and placed items.
 
+import { offsetPlanPoint, workTriangleOf } from "../../domain/geometry";
 import type { Carcass, Fixture, Furniture, KitchenDesign, Vec2 } from "../../domain/types";
 
 export const MM = 0.001;
@@ -37,7 +38,23 @@ export type ItemRole =
   | "door"
   | "window"
   | "backsplash"
-  | "light";
+  | "light"
+  | "socket"
+  | "switch";
+
+export type DoorProfile = "slab" | "shaker" | "beadboard";
+
+export type ApplianceKind =
+  | "hob"
+  | "sink"
+  | "oven"
+  | "fridge"
+  | "fridge-american"
+  | "dishwasher"
+  | "rangehood"
+  | "winecooler"
+  | "microwave"
+  | "washer";
 
 interface WallNode {
   id: string;
@@ -56,6 +73,8 @@ export interface WallSolid {
   center: [number, number, number];
   size: [number, number, number];
   rotationY: number;
+  /** Unit vector pointing out of the room, in the XZ plane. */
+  outward: PlanPoint;
 }
 
 interface OpeningNode {
@@ -81,6 +100,21 @@ export interface SceneItem {
   rotation: number;
   color: string;
   blocksWalk: boolean;
+  /** Carcass door style from materials.cabinetFinish. */
+  profile?: DoorProfile;
+  fitting?: string;
+  mount?: Carcass["mount"];
+  /** False when an appliance face replaces the doors. */
+  showFront?: boolean;
+  appliance?: ApplianceKind;
+}
+
+export interface WorkTriangleOverlay {
+  sink: PlanPoint;
+  hob: PlanPoint;
+  fridge: PlanPoint;
+  elevation: number;
+  status: "ok" | "warning";
 }
 
 export interface WalkthroughScene {
@@ -90,6 +124,11 @@ export interface WalkthroughScene {
   ceilingHeight: number;
   palette: KitchenDesign["colours"];
   cabinetFinish: KitchenDesign["materials"]["cabinetFinish"];
+  flooringStyle: string;
+  countertopMaterial: string;
+  backsplashStyle: string;
+  /** Sink, hob, and fridge centres from the shared rotated-footprint triangle. */
+  workTriangle: WorkTriangleOverlay | null;
   /** True when the room polygon could not be walked, so a sample kitchen is shown. */
   usedSample: boolean;
   spawn: { x: number; z: number; yaw: number };
@@ -147,6 +186,7 @@ export function buildWalkthroughScene(design: KitchenDesign): WalkthroughScene {
     ...source.furniture.flatMap((piece) => furnitureItems(piece)),
     ...openingItems(openings, walls),
     ...lightItems(source.fixtures, ceilingHeight),
+    ...electricalItems(source.fixtures, walls, openings),
   ];
 
   return {
@@ -161,6 +201,10 @@ export function buildWalkthroughScene(design: KitchenDesign): WalkthroughScene {
     ceilingHeight,
     palette: { ...source.colours },
     cabinetFinish: source.materials.cabinetFinish,
+    flooringStyle: source.materials.flooringStyle,
+    countertopMaterial: source.materials.countertopMaterial,
+    backsplashStyle: source.materials.backsplashStyle,
+    workTriangle: sceneTriangle(source),
     usedSample: !usable,
     spawn: spawnFor(polygon, walls, openings, items),
   };
@@ -294,6 +338,7 @@ function solidsForWall(wall: WallNode, openings: OpeningNode[]): WallSolid[] {
       ],
       size: [length, height, wall.thickness],
       rotationY: wall.rotationY,
+      outward: wall.outward,
     });
   };
 
@@ -319,6 +364,12 @@ function carcassItems(carcass: Carcass, design: KitchenDesign): SceneItem[] {
     carcass.applianceLabel || carcass.label || carcass.fittingLabel || `${carcass.size}mm unit`;
   const color = design.colours.cabinets;
   const items: SceneItem[] = [];
+  const front = {
+    profile: doorProfile(design.materials.cabinetFinish),
+    fitting: carcass.fittingType,
+    mount: carcass.mount,
+    showFront: !coversFront(carcass.applianceType),
+  };
 
   if (carcass.mount === "wall") {
     items.push(
@@ -333,6 +384,7 @@ function carcassItems(carcass: Carcass, design: KitchenDesign): SceneItem[] {
         rotation,
         color,
         blocksWalk: false,
+        ...front,
       }),
     );
     items.push(...applianceItems(carcass, origin, width, depth, rotation));
@@ -352,6 +404,7 @@ function carcassItems(carcass: Carcass, design: KitchenDesign): SceneItem[] {
         rotation,
         color,
         blocksWalk: true,
+        ...front,
       }),
     );
     items.push(...applianceItems(carcass, origin, width, depth, rotation));
@@ -382,6 +435,7 @@ function carcassItems(carcass: Carcass, design: KitchenDesign): SceneItem[] {
       rotation,
       color,
       blocksWalk: true,
+      ...front,
     }),
     boxItem({
       id: `${carcass.id}-top`,
@@ -428,6 +482,7 @@ function applianceItems(
     label,
     rotation,
     blocksWalk: false,
+    appliance: asApplianceKind(type),
   };
 
   if ((type === "hob" || type === "sink") && carcass.mount === "floor") {
@@ -587,6 +642,117 @@ function openingItems(openings: OpeningNode[], walls: WallNode[]): SceneItem[] {
   return items;
 }
 
+function electricalItems(
+  fixtures: Fixture[],
+  walls: WallNode[],
+  openings: OpeningNode[],
+): SceneItem[] {
+  const items: SceneItem[] = [];
+  for (const fixture of fixtures) {
+    if (fixture.type !== "socket" && fixture.type !== "switch") continue;
+    if (fixture.wallIndex === undefined || fixture.t === undefined) continue;
+    const wall = walls[fixture.wallIndex];
+    if (!wall) continue;
+    const t = Math.min(0.96, Math.max(0.04, fixture.t));
+    const along = wall.length * t;
+    const blocked = openings.some(
+      (opening) =>
+        opening.wallId === wall.id && Math.abs(opening.along - along) < opening.width / 2,
+    );
+    if (blocked) continue;
+
+    const at = pointAlong(wall, along);
+    const plateW = fixture.type === "socket" ? 0.148 : 0.086;
+    const plateH = 0.086;
+    const plateD = 0.016;
+    const theta = Math.atan2(wall.inward.x, wall.inward.z);
+    const rotation = (-theta * 180) / Math.PI;
+    const hx = plateW / 2;
+    const hz = plateD / 2;
+    const center = {
+      x: at.x + wall.inward.x * (0.008 + hz),
+      z: at.z + wall.inward.z * (0.008 + hz),
+    };
+    const axisX = wall.inward.z;
+    const axisZ = -wall.inward.x;
+    const elevation = fixture.type === "switch" ? 1.15 : 0.45;
+    items.push(
+      boxItem({
+        id: fixture.id,
+        role: fixture.type,
+        sourceId: fixture.id,
+        label: fixture.type === "socket" ? "Socket" : "Switch",
+        origin: {
+          x: center.x - axisX * hx - wall.inward.x * hz,
+          z: center.z - axisZ * hx - wall.inward.z * hz,
+        },
+        size: [plateW, plateH, plateD],
+        elevation: elevation - plateH / 2,
+        rotation,
+        color: "#f4f1ea",
+        blocksWalk: false,
+      }),
+    );
+  }
+  return items;
+}
+
+function sceneTriangle(design: KitchenDesign): WorkTriangleOverlay | null {
+  const triangle = workTriangleOf(design.carcasses);
+  if (!triangle) return null;
+  const point = (station: { x: number; y: number }): PlanPoint => ({
+    x: station.x * MM,
+    z: station.y * MM,
+  });
+  return {
+    sink: point(triangle.sink),
+    hob: point(triangle.hob),
+    fridge: point(triangle.fridge),
+    elevation: 0.92,
+    status: triangle.status,
+  };
+}
+
+const APPLIANCE_KINDS: readonly ApplianceKind[] = [
+  "hob",
+  "sink",
+  "oven",
+  "fridge",
+  "fridge-american",
+  "dishwasher",
+  "rangehood",
+  "winecooler",
+  "microwave",
+  "washer",
+];
+
+const FRONT_APPLIANCES = new Set<ApplianceKind>([
+  "oven",
+  "fridge",
+  "fridge-american",
+  "dishwasher",
+  "washer",
+  "microwave",
+  "winecooler",
+]);
+
+function asApplianceKind(type: string): ApplianceKind | undefined {
+  return (APPLIANCE_KINDS as readonly string[]).includes(type)
+    ? (type as ApplianceKind)
+    : undefined;
+}
+
+function coversFront(type: string | null): boolean {
+  const kind = type ? asApplianceKind(type) : undefined;
+  return kind !== undefined && FRONT_APPLIANCES.has(kind);
+}
+
+function doorProfile(finish: KitchenDesign["materials"]["cabinetFinish"]): DoorProfile {
+  if (finish === "Beadboard") return "beadboard";
+  if (finish === "Slab") return "slab";
+  return "shaker";
+}
+
 function lightItems(fixtures: Fixture[], ceilingHeight: number): SceneItem[] {
   return fixtures
     .filter((fixture) => fixture.type === "pendant" || fixture.type === "downlight")
@@ -626,13 +792,8 @@ export function offsetOrigin(
   localX: number,
   localZ: number,
 ): PlanPoint {
-  const ry = planDegreesToRotationY(rotationDeg);
-  const c = Math.cos(ry);
-  const s = Math.sin(ry);
-  return {
-    x: origin.x + localX * c + localZ * s,
-    z: origin.z - localX * s + localZ * c,
-  };
+  const next = offsetPlanPoint({ x: origin.x, y: origin.z }, rotationDeg, localX, localZ);
+  return { x: next.x, z: next.y };
 }
 
 function cornerFromCenter(
@@ -777,6 +938,9 @@ function sampleKitchen(): KitchenDesign {
     fixtures: [
       { id: "sample-window", type: "window", wallIndex: 0, t: 0.55, width: 1400 },
       { id: "sample-door", type: "door", wallIndex: 3, t: 0.62, width: 900 },
+      { id: "sample-socket-a", type: "socket", wallIndex: 1, t: 0.35 },
+      { id: "sample-socket-b", type: "socket", wallIndex: 1, t: 0.62 },
+      { id: "sample-switch", type: "switch", wallIndex: 2, t: 0.22 },
       { id: "sample-pendant", type: "pendant", position: { x: 1700, y: 1400 } },
     ],
     carcasses: [

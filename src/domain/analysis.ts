@@ -1,12 +1,5 @@
-import type {
-  AnalysisIssue,
-  DesignAnalysis,
-  Fixture,
-  KitchenDesign,
-  Severity,
-  Vec2,
-} from "./types";
-import { rotatedFootprintCenter, workTriangleOf } from "./geometry";
+import type { AnalysisIssue, DesignAnalysis, KitchenDesign, Severity, Vec2 } from "./types";
+import { sinkLacksNearbyPlumbing, workTriangleOf } from "./geometry";
 
 function polygonArea(pts: Vec2[]): number {
   let area = 0;
@@ -17,20 +10,6 @@ function polygonArea(pts: Vec2[]): number {
     area += p1.x * p2.y - p2.x * p1.y;
   }
   return Math.abs(area) / 2;
-}
-
-function distance(a: Vec2, b: Vec2): number {
-  return Math.hypot(a.x - b.x, a.y - b.y);
-}
-
-function nearest(list: Fixture[], center: Vec2): number {
-  if (list.length === 0) return Infinity;
-  return Math.min(
-    ...list.map((fixture) => {
-      if (!fixture.position) return Infinity;
-      return distance(fixture.position, center);
-    }),
-  );
 }
 
 export function computeAnalysis(design: KitchenDesign): DesignAnalysis {
@@ -93,13 +72,7 @@ export function computeAnalysis(design: KitchenDesign): DesignAnalysis {
   const waterFixtures = fixtures.filter((fixture) => fixture.type === "water");
   const wasteFixtures = fixtures.filter((fixture) => fixture.type === "waste");
   sinkCarcasses.forEach((carcass) => {
-    const center = rotatedFootprintCenter(
-      carcass.position,
-      carcass.rotation || 0,
-      carcass.size,
-      carcass.depth,
-    );
-    if (nearest(waterFixtures, center) > 1500 || nearest(wasteFixtures, center) > 1500) {
+    if (sinkLacksNearbyPlumbing(carcass, waterFixtures, wasteFixtures)) {
       issues.push({
         id: "plumbing-" + carcass.id,
         severity: "warning",

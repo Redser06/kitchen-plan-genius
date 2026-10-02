@@ -1,7 +1,11 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
+import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import type { PlanPoint, SceneItem, WalkthroughScene } from "./plan-scene";
+import { wallCutawayOpacity } from "./cutaway";
+import type { PlanPoint, SceneItem, WallSolid, WalkthroughScene } from "./plan-scene";
 import { planDegreesToRotationY, polygonCentroid } from "./plan-scene";
+import { ApplianceBody, CabinetFront, SocketFace, WorkTriangleOverlay } from "./room-details";
+import { surfaceMaterial, tiledSurface } from "./surfaces";
 
 export function KitchenRoom({
   scene,
@@ -16,6 +20,12 @@ export function KitchenRoom({
 }) {
   const floorGeometry = usePolygonGeometry(scene.floor);
   const centroid = polygonCentroid(scene.floor);
+  const floorMaterial = useFloorMaterial(scene);
+  const wallMaterial = useMemo(() => {
+    const material = surfaceMaterial("wall", scene.palette.walls);
+    material.side = THREE.DoubleSide;
+    return material;
+  }, [scene.palette.walls]);
 
   return (
     <group>
@@ -43,6 +53,7 @@ export function KitchenRoom({
 
       <mesh
         geometry={floorGeometry}
+        material={floorMaterial}
         position={[0, -0.001, 0]}
         receiveShadow
         onClick={
@@ -53,60 +64,96 @@ export function KitchenRoom({
               }
             : undefined
         }
-      >
-        <FloorMaterial color={scene.palette.floor} />
-      </mesh>
+      />
       {mode === "walk" && (
-        <mesh geometry={floorGeometry} position={[0, scene.ceilingHeight, 0]}>
-          <meshStandardMaterial color={scene.palette.walls} roughness={1} side={THREE.DoubleSide} />
-        </mesh>
+        <mesh
+          geometry={floorGeometry}
+          material={wallMaterial}
+          position={[0, scene.ceilingHeight, 0]}
+        />
       )}
 
       {scene.solids.map((solid) => (
-        <mesh
-          key={solid.id}
-          position={solid.center}
-          rotation={[0, solid.rotationY, 0]}
-          castShadow
-          receiveShadow
-        >
-          <boxGeometry args={solid.size} />
-          <meshStandardMaterial color={scene.palette.walls} roughness={0.92} />
-        </mesh>
+        <CutawayWall key={solid.id} solid={solid} source={wallMaterial} mode={mode} />
       ))}
 
       {scene.items.map((item) => (
         <ItemMesh
           key={item.id}
           item={item}
-          finish={scene.cabinetFinish}
-          handle={scene.palette.handles}
+          scene={scene}
           selected={selectedId !== null && item.sourceId === selectedId}
           interactive={mode === "orbit"}
           onSelect={onSelect}
         />
       ))}
+
+      <WorkTriangleOverlay triangle={scene.workTriangle} mode={mode} />
     </group>
+  );
+}
+
+function CutawayWall({
+  solid,
+  source,
+  mode,
+}: {
+  solid: WallSolid;
+  source: THREE.MeshStandardMaterial;
+  mode: "walk" | "orbit";
+}) {
+  const material = useMemo(() => {
+    const next = source.clone();
+    next.transparent = true;
+    next.opacity = 1;
+    next.depthWrite = true;
+    return next;
+  }, [source]);
+  const mesh = useRef<THREE.Mesh>(null);
+
+  useEffect(
+    () => () => {
+      material.dispose();
+    },
+    [material],
+  );
+
+  useFrame(({ camera }) => {
+    const opacity = wallCutawayOpacity(camera.position, solid, mode);
+    if (Math.abs(material.opacity - opacity) < 0.015) return;
+    material.opacity = opacity;
+    material.depthWrite = opacity > 0.92;
+    const wall = mesh.current;
+    if (wall) wall.castShadow = opacity > 0.85;
+  });
+
+  return (
+    <mesh
+      ref={mesh}
+      position={solid.center}
+      rotation={[0, solid.rotationY, 0]}
+      material={material}
+      castShadow
+      receiveShadow
+    >
+      <boxGeometry args={solid.size} />
+    </mesh>
   );
 }
 
 function ItemMesh({
   item,
-  finish,
-  handle,
+  scene,
   selected,
   interactive,
   onSelect,
 }: {
   item: SceneItem;
-  finish: WalkthroughScene["cabinetFinish"];
-  handle: string;
+  scene: WalkthroughScene;
   selected: boolean;
   interactive: boolean;
   onSelect: (id: string | null) => void;
 }) {
-  const transparent = item.role === "window";
-  const showFront = item.role === "cabinet" && finish !== "Slab";
   return (
     <group
       position={[item.origin.x, item.elevation, item.origin.z]}
@@ -120,91 +167,127 @@ function ItemMesh({
           : undefined
       }
     >
-      {item.role === "light" ? (
-        <mesh position={[0, 0, 0]}>
-          <sphereGeometry args={[0.055, 16, 16]} />
-          <meshStandardMaterial color={item.color} emissive={item.color} emissiveIntensity={0.9} />
-          <pointLight intensity={0.4} distance={3.2} color="#ffe6bf" />
-        </mesh>
-      ) : (
-        <mesh
-          position={[item.size[0] / 2, item.size[1] / 2, item.size[2] / 2]}
-          castShadow
-          receiveShadow
-        >
-          <boxGeometry args={item.size} />
-          <meshStandardMaterial
-            color={item.color}
-            roughness={item.role === "countertop" ? 0.32 : 0.62}
-            metalness={item.role === "appliance" ? 0.2 : 0.02}
-            transparent={transparent}
-            opacity={transparent ? 0.42 : 1}
-            emissive={selected ? "#c47a3a" : "#000000"}
-            emissiveIntensity={selected ? 0.28 : 0}
-          />
-        </mesh>
-      )}
-      {showFront && (
-        <mesh position={[item.size[0] / 2, item.size[1] / 2, -0.008]} castShadow>
-          <boxGeometry
-            args={[Math.max(0.05, item.size[0] - 0.08), Math.max(0.05, item.size[1] - 0.12), 0.016]}
-          />
-          <meshStandardMaterial color={item.color} roughness={0.48} />
-        </mesh>
-      )}
-      {item.role === "cabinet" && (
-        <mesh position={[item.size[0] * 0.8, item.size[1] * 0.48, -0.02]}>
-          <boxGeometry args={[0.014, Math.min(0.16, item.size[1] * 0.22), 0.016]} />
-          <meshStandardMaterial color={handle} metalness={0.45} roughness={0.35} />
+      <ItemBody item={item} scene={scene} />
+      {selected && item.role !== "light" && item.role !== "socket" && item.role !== "switch" && (
+        <mesh position={[item.size[0] / 2, item.size[1] / 2, item.size[2] / 2]}>
+          <boxGeometry args={[item.size[0] + 0.02, item.size[1] + 0.02, item.size[2] + 0.02]} />
+          <meshBasicMaterial color="#e07a32" wireframe />
         </mesh>
       )}
     </group>
   );
 }
 
-function FloorMaterial({ color }: { color: string }) {
+function ItemBody({ item, scene }: { item: SceneItem; scene: WalkthroughScene }) {
+  if (item.role === "light") {
+    return (
+      <mesh position={[0, 0, 0]}>
+        <sphereGeometry args={[0.055, 16, 16]} />
+        <meshStandardMaterial color={item.color} emissive={item.color} emissiveIntensity={0.9} />
+        <pointLight intensity={0.4} distance={3.2} color="#ffe6bf" />
+      </mesh>
+    );
+  }
+  if (item.role === "cabinet") {
+    const paint = surfaceMaterial("cabinet", item.color);
+    return (
+      <group>
+        <mesh
+          position={[item.size[0] / 2, item.size[1] / 2, item.size[2] / 2]}
+          material={paint}
+          castShadow
+          receiveShadow
+        >
+          <boxGeometry args={item.size} />
+        </mesh>
+        <CabinetFront item={item} handle={scene.palette.handles} />
+      </group>
+    );
+  }
+  if (item.role === "appliance") return <ApplianceBody item={item} />;
+  if (item.role === "socket" || item.role === "switch") return <SocketFace item={item} />;
+  if (item.role === "window") return <WindowPane item={item} />;
+
+  const material = materialFor(item, scene);
+  const inset = item.role === "plinth" ? 0.025 : 0;
+  return (
+    <mesh
+      position={[item.size[0] / 2, item.size[1] / 2, item.size[2] / 2 + inset / 2]}
+      material={material}
+      castShadow
+      receiveShadow
+    >
+      <boxGeometry args={[item.size[0], item.size[1], Math.max(0.01, item.size[2] - inset)]} />
+    </mesh>
+  );
+}
+
+function WindowPane({ item }: { item: SceneItem }) {
+  const [w, h, d] = item.size;
+  const bar = 0.015;
+  return (
+    <group>
+      <mesh position={[w / 2, h / 2, d / 2]}>
+        <boxGeometry args={[w, h, d]} />
+        <meshStandardMaterial
+          color="#c5e2ef"
+          transparent
+          opacity={0.38}
+          roughness={0.06}
+          metalness={0.08}
+        />
+      </mesh>
+      <mesh position={[w / 2, h / 2, d / 2]}>
+        <boxGeometry args={[bar, h, d + 0.006]} />
+        <meshStandardMaterial color="#f3efe6" roughness={0.45} />
+      </mesh>
+      <mesh position={[w / 2, h / 2, d / 2]}>
+        <boxGeometry args={[w, bar, d + 0.006]} />
+        <meshStandardMaterial color="#f3efe6" roughness={0.45} />
+      </mesh>
+    </group>
+  );
+}
+
+function materialFor(item: SceneItem, scene: WalkthroughScene) {
+  if (item.role === "countertop") {
+    return surfaceMaterial("worktop", item.color, scene.countertopMaterial);
+  }
+  if (item.role === "backsplash") {
+    return surfaceMaterial("splash", item.color, scene.backsplashStyle);
+  }
+  if (item.role === "plinth") return surfaceMaterial("cabinet", item.color);
+  if (item.role === "door" || item.role === "furniture") {
+    return surfaceMaterial("timber", item.color);
+  }
+  return surfaceMaterial("cabinet", item.color);
+}
+
+function useFloorMaterial(scene: WalkthroughScene) {
+  const span = useMemo(() => {
+    const xs = scene.floor.map((point) => point.x);
+    const zs = scene.floor.map((point) => point.z);
+    return Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...zs) - Math.min(...zs), 1);
+  }, [scene.floor]);
+
   const material = useMemo(() => {
-    const canvas = document.createElement("canvas");
-    canvas.width = 512;
-    canvas.height = 512;
-    const ctx = canvas.getContext("2d");
-    const texture = new THREE.CanvasTexture(canvas);
-    texture.wrapS = THREE.RepeatWrapping;
-    texture.wrapT = THREE.RepeatWrapping;
-    texture.colorSpace = THREE.SRGBColorSpace;
-    texture.repeat.set(2.5, 2.5);
-    if (ctx) {
-      ctx.fillStyle = color;
-      ctx.fillRect(0, 0, 512, 512);
-      for (let row = 0; row < 8; row++) {
-        const y = row * 64;
-        ctx.fillStyle = "rgba(90, 58, 28, 0.16)";
-        ctx.fillRect(0, y, 512, 3);
-        const offset = row % 2 === 0 ? 0 : 90;
-        for (let x = offset; x < 512; x += 180) {
-          ctx.strokeStyle = "rgba(90, 58, 28, 0.12)";
-          ctx.strokeRect(x + 6, y + 8, 160, 48);
-        }
-      }
-      texture.needsUpdate = true;
-    }
-    return new THREE.MeshStandardMaterial({
-      map: texture,
-      roughness: 0.88,
-      metalness: 0,
-      side: THREE.DoubleSide,
-    });
-  }, [color]);
+    const repeat = Math.max(2, span / 1.25);
+    const next = tiledSurface("floor", scene.palette.floor, scene.flooringStyle, repeat, repeat);
+    next.side = THREE.DoubleSide;
+    return next;
+  }, [scene.palette.floor, scene.flooringStyle, span]);
 
   useEffect(
     () => () => {
       material.map?.dispose();
+      material.roughnessMap?.dispose();
+      material.bumpMap?.dispose();
       material.dispose();
     },
     [material],
   );
 
-  return <primitive object={material} attach="material" />;
+  return material;
 }
 
 function usePolygonGeometry(polygon: PlanPoint[]) {
@@ -216,7 +299,6 @@ function usePolygonGeometry(polygon: PlanPoint[]) {
     });
     shape.closePath();
     const next = new THREE.ShapeGeometry(shape);
-    // ShapeGeometry lives in XY. +90° about X lays that Y axis onto +Z.
     next.rotateX(Math.PI / 2);
     return next;
   }, [polygon]);

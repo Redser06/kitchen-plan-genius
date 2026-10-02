@@ -1,35 +1,49 @@
-# Kitchen Plan Companion
+# KitchenPlan
 
-Open a new project for me pulling from this github repo   https://github.com/Redser06/KitchenPlan
+Browser-based kitchen planner. Sketch a room, place cabinets, appliances, furniture, and fixtures, then review the same layout in 2D or in a WebGL kitchen.
 
-It should have everything you need to build out the app, with everything in one place. This has been designed in Claude design and built by GLM-5.2 model. We can refine after the project is enabled.
+Designs stay in this browser. Nothing is uploaded.
 
-This project was built with [Lovable](https://lovable.dev).
+## Develop
 
-**Live app**: https://plan-genius-ai-53.lovable.app
-
-## Build with Lovable
-
-Continue developing this project in the [Lovable editor](https://lovable.dev/projects/7b5a15ba-b916-420f-bd71-4383cc185981).
-
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: every change made in Lovable is committed straight to this repository.
-- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
-
-## Development
-
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
+Install [Bun](https://bun.sh). Dependencies are locked in `bun.lock`.
 
 ```sh
-git clone <this-repository-url>
-cd <repository-name>
-npm i
-npm run dev
+bun install
+bun run dev
 ```
 
-`bun run test` runs the walkthrough unit tests. `bun run build` typechecks and builds the app.
+```sh
+bun run test
+bun run build
+```
 
-The plan toolbar’s **3D** and **Walk** buttons open a WebGL kitchen built from the current plan (or a sample kitchen when the room has fewer than three corners).
+`bun run dev` starts the Vite dev server. `bun run test` runs Vitest (`vitest run`): the walkthrough scene tests and the planner persistence and resize tests. `bun run build` produces a production build.
 
-- **3D** — drag to orbit, scroll to zoom, click a unit to select it, click the floor to clear the selection.
-- **Walk** — click the view to look around, WASD or the arrow keys to move, Shift to move faster, Esc to release the pointer. You start just inside the door, facing the middle of the room.
+## Controls
+
+The header switches **2D**, **3D**, and **Walk**.
+
+- **2D** is the top-down plan. Click a unit to select it, drag to move it, and drag the rotate handle (or press `R`) to turn it. `Delete` or `Backspace` removes the selection. `Escape` clears the selection and closes panels. Undo and redo are in the header (`Ctrl/Cmd+Z`, `Ctrl/Cmd+Y` or `Ctrl/Cmd+Shift+Z`). `+` and `−` zoom the plan. To pan, open **Components**, choose **Pan**, and drag the canvas.
+- **3D** opens a WebGL view of the current plan. Drag to orbit, scroll to zoom, click a unit to select it, and click the floor to clear the selection. Walls nearest the camera fade so you can see into the room.
+- **Walk** is first-person in that same kitchen. You start just inside the door, facing the middle of the room. Click the view to look around, then use WASD or the arrow keys to move. Shift moves faster. Esc releases the pointer. A small map shows where you are. A wall fades when you stand against it. While the pointer is locked, plan shortcuts such as undo stay out of the way.
+
+Cabinet fronts follow the plan finish (Shaker, Slab, or Beadboard) and the colour scheme. Worktops, floors, and walls use generated textures. Sockets and switches from the plan appear on the walls. When the plan has a sink, hob, and fridge, their work triangle is drawn at counter height.
+
+If the room has fewer than three corners, 3D and Walk show a sample kitchen until the outline is usable. An empty room still walks, and tells you to place units on the 2D plan.
+
+**Room shape** edits the floor polygon: drag corners, double-click a wall to add a corner, or set a wall’s length and angle. The header field labeled **Resize room** only scales the current outline to a size such as `5m x 4m`. It does not generate a new layout.
+
+The bottom bar opens **Components** (cabinets and furniture), **Measure**, **Materials**, **Fixtures** (doors, windows, sockets, plumbing, lights), and **Analysis** (work triangle, walkway, daylight, plumbing).
+
+The download button saves `kitchen-design.json`. The print button opens **Export**, which can print or save a PDF, download the same JSON, and restore an earlier version from this browser session. A JSON file can also be imported from the header.
+
+## Persistence
+
+Edits are written to `localStorage` under `kitchenplan-design-v3` after a short pause, and again when the page is hidden so a quick refresh keeps the last change. **Saved locally** appears after a successful write. Reloading restores that design, including the room outline. Clearing site data for this origin deletes it.
+
+## Not in this app
+
+- Accounts, cloud save, or shared links
+- Live collaboration or email invites
+- A general AI designer. Room resize accepts a size only; room shape is edited by hand (the Room shape panel can start a rectangle, L, U, or galley outline from a short description, then you adjust the corners)

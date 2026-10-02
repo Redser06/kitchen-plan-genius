@@ -25,8 +25,10 @@ bun run build
 The header switches **2D**, **3D**, and **Walk**.
 
 - **2D** is the top-down plan. Click a unit to select it, drag to move it, and drag the rotate handle (or press `R`) to turn it. `Delete` or `Backspace` removes the selection. `Escape` clears the selection and closes panels. Undo and redo are in the header (`Ctrl/Cmd+Z`, `Ctrl/Cmd+Y` or `Ctrl/Cmd+Shift+Z`). `+` and `−` zoom the plan. To pan, open **Components**, choose **Pan**, and drag the canvas.
-- **3D** opens a WebGL view of the current plan. Drag to orbit, scroll to zoom, click a unit to select it, and click the floor to clear the selection.
-- **Walk** is first-person in that same kitchen. You start just inside the door, facing the middle of the room. Click the view to look around, then use WASD or the arrow keys to move. Shift moves faster. Esc releases the pointer. A small map shows where you are. While the pointer is locked, plan shortcuts such as undo stay out of the way.
+- **3D** opens a WebGL view of the current plan. Drag to orbit, scroll to zoom, click a unit to select it, and click the floor to clear the selection. Walls nearest the camera fade so you can see into the room.
+- **Walk** is first-person in that same kitchen. You start just inside the door, facing the middle of the room. Click the view to look around, then use WASD or the arrow keys to move. Shift moves faster. Esc releases the pointer. A small map shows where you are. A wall fades when you stand against it. While the pointer is locked, plan shortcuts such as undo stay out of the way.
+
+Cabinet fronts follow the plan finish (Shaker, Slab, or Beadboard) and the colour scheme. Worktops, floors, and walls use generated textures. Sockets and switches from the plan appear on the walls. When the plan has a sink, hob, and fridge, their work triangle is drawn at counter height.
 
 If the room has fewer than three corners, 3D and Walk show a sample kitchen until the outline is usable. An empty room still walks, and tells you to place units on the 2D plan.
 

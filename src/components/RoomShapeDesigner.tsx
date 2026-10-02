@@ -13,8 +13,8 @@ export default function RoomShapeDesigner() {
   const setSelectedWallIndex = useStore((s) => s.setSelectedWallIndex);
   const confirmRoomDraft = useStore((s) => s.confirmRoomDraft);
   const cancelRoomSetup = useStore((s) => s.setScreen);
-  const [aiInput, setAiInput] = useState('');
-  const [aiFeedback, setAiFeedback] = useState<string | null>(null);
+  const [shapeInput, setShapeInput] = useState('');
+  const [shapeFeedback, setShapeFeedback] = useState<string | null>(null);
   const [cornerDrag, setCornerDrag] = useState<number | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
 
@@ -107,15 +107,15 @@ export default function RoomShapeDesigner() {
     return [{ x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: d }, { x: 0, y: d }];
   };
 
-  const handleAISend = () => {
-    if (!aiInput.trim()) return;
-    const points = generateRoomShape(aiInput);
+  const applyStartingShape = () => {
+    if (!shapeInput.trim()) return;
+    const points = generateRoomShape(shapeInput);
     setRoomDraft(points);
-    setAiFeedback('Generated a starting shape — drag corners or select a wall to fine-tune.');
-    setAiInput('');
+    setShapeFeedback('Generated a starting shape — drag corners or select a wall to fine-tune.');
+    setShapeInput('');
     setSelectedCornerIndex(null);
     setSelectedWallIndex(null);
-    setTimeout(() => setAiFeedback(null), 4500);
+    setTimeout(() => setShapeFeedback(null), 4500);
   };
 
   // Side panel values
@@ -204,14 +204,13 @@ export default function RoomShapeDesigner() {
           <div style={{ fontFamily: 'Newsreader, serif', fontSize: 17, fontWeight: 600, marginBottom: 4 }}>Design your room shape</div>
           <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 24 }}>Drag corners to reshape · double-click a wall to add a corner</div>
 
-          {/* AI prompt */}
-          <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-3)', marginBottom: 10 }}>AI shape generator</div>
+          <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-3)', marginBottom: 10 }}>Starting shape</div>
           <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-            <input type="text" value={aiInput} onChange={(e) => setAiInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleAISend(); }}
+            <input type="text" value={shapeInput} onChange={(e) => setShapeInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') applyStartingShape(); }}
               placeholder='e.g. "L-shape 4m x 3m"' style={{ flex: 1, fontSize: 13, padding: '9px 12px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8 }} />
-            <button onClick={handleAISend} style={{ padding: '9px 14px', background: 'var(--accent)', color: '#fff', borderRadius: 8, fontSize: 13, fontWeight: 600 }}>Generate</button>
+            <button onClick={applyStartingShape} style={{ padding: '9px 14px', background: 'var(--accent)', color: '#fff', borderRadius: 8, fontSize: 13, fontWeight: 600 }}>Generate</button>
           </div>
-          {aiFeedback && <div style={{ fontSize: 12, color: 'var(--accent)', marginBottom: 16, background: 'var(--accent-soft)', padding: '8px 12px', borderRadius: 8 }}>{aiFeedback}</div>}
+          {shapeFeedback && <div style={{ fontSize: 12, color: 'var(--accent)', marginBottom: 16, background: 'var(--accent-soft)', padding: '8px 12px', borderRadius: 8 }}>{shapeFeedback}</div>}
 
           {/* Corner panel */}
           {cornerPanel && (

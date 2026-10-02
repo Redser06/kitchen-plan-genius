@@ -5,9 +5,10 @@ import BottomSheet from '@/components/BottomSheet';
 import ContextPanel from '@/components/ContextPanel';
 import RoomShapeDesigner from '@/components/RoomShapeDesigner';
 import ExportPanel from '@/components/ExportPanel';
-import { useStore } from '@/store/useStore';
+import { subscribeDesignAutosave, useStore } from '@/store/useStore';
 import type { Vec2 } from '@/domain/types';
 import kitchenplanCssUrl from './kitchenplan.css?url';
+import { RESIZE_SUGGESTIONS, resizeRoom } from './resizeRoom';
 
 function useKitchenPlanStylesheet() {
   useEffect(() => {
@@ -38,11 +39,26 @@ export default function App() {
   const showExportPanel = useStore((s) => s.showExportPanel);
   const openRoomSetup = useStore((s) => s.setScreen);
   const design = useStore((s) => s.design);
+  const [savedLocally, setSavedLocally] = useState(false);
 
   const [scale, setScale] = useState(1);
   const [position, setPosition] = useState<Vec2>({ x: 150, y: 65 });
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+    let cueTimer = 0;
+    const { unsubscribe, flush } = subscribeDesignAutosave(() => {
+      setSavedLocally(true);
+      window.clearTimeout(cueTimer);
+      cueTimer = window.setTimeout(() => setSavedLocally(false), 2000);
+    });
+    window.addEventListener('pagehide', flush);
+    return () => {
+      unsubscribe();
+      window.removeEventListener('pagehide', flush);
+      window.clearTimeout(cueTimer);
+    };
+  }, [load]);
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
@@ -124,12 +140,14 @@ export default function App() {
           <span className="topbar-logo-text">KitchenPlan</span>
         </div>
 
-        <AIPromptBar />
+        <ResizeRoomBar />
 
         <button onClick={() => openRoomSetup('room-setup')} title="Edit room shape" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 12px', borderRadius: 9, color: 'var(--text-2)', fontSize: 13, fontWeight: 500 }}>
           <svg viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"><polygon points="3,8 10,3 17,8 17,17 3,17"/></svg>
           <span style={{ color: 'var(--accent)', fontWeight: 600 }}>Room shape</span>
         </button>
+
+        {savedLocally && <span className="save-cue" role="status">Saved locally</span>}
 
         <div className="view-toggle">
           <button className={viewMode === '2d' ? 'active' : ''} onClick={() => setViewMode('2d')}>2D</button>
@@ -158,8 +176,8 @@ export default function App() {
           <button className="icon-btn" onClick={handleExport} title="Export">
             <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M10 3 V12"/><path d="M6 9 L10 13 L14 9"/><path d="M4 16 H16"/></svg>
           </button>
-          <button className="icon-btn" onClick={() => useStore.getState().setShowExportPanel(true)} title="Export & share">
-            <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><circle cx="6" cy="10" r="2"/><circle cx="14" cy="5" r="2"/><circle cx="14" cy="15" r="2"/><line x1="7.5" y1="9" x2="12.5" y2="6"/><line x1="7.5" y1="11" x2="12.5" y2="14"/></svg>
+          <button className="icon-btn" onClick={() => useStore.getState().setShowExportPanel(true)} title="Print and export">
+            <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M6 7 V3 H14 V7"/><path d="M6 14 H4 V8 H16 V14 H14"/><rect x="6" y="12" width="8" height="5"/></svg>
           </button>
           <button className="icon-btn" onClick={handleNew} title="New design">
             <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2.5 H12 L16 6.5 V17 H6 Z"/><path d="M12 2.5 V6.5 H16"/><line x1="8" y1="11" x2="14" y2="11"/><line x1="11" y1="8" x2="11" y2="14"/></svg>
@@ -179,57 +197,45 @@ export default function App() {
   );
 }
 
-function AIPromptBar() {
-  const design = useStore((s) => s.design);
+function ResizeRoomBar() {
   const setDesign = useStore((s) => s.setDesign);
   const [input, setInput] = useState('');
-  const [busy, setBusy] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
 
   const handleSend = () => {
-    if (!input.trim() || busy) return;
-    setBusy(true); setFeedback(null); setShowSuggestions(false);
-    setTimeout(() => {
-      const match = input.match(/(\d+(?:\.\d+)?)\s*m\s*[x×]\s*(\d+(?:\.\d+)?)\s*m/i);
-      if (match) {
-        const newW = Math.round(parseFloat(match[1]) * 1000), newD = Math.round(parseFloat(match[2]) * 1000);
-        const d = JSON.parse(JSON.stringify(design)) as typeof design;
-        const pts = d.room.points;
-        const minX = Math.min(...pts.map(p => p.x)), maxX = Math.max(...pts.map(p => p.x));
-        const minY = Math.min(...pts.map(p => p.y)), maxY = Math.max(...pts.map(p => p.y));
-        const curW = maxX - minX || 1, curD = maxY - minY || 1;
-        d.room.points = pts.map(p => ({ x: (p.x - minX) * newW / curW, y: (p.y - minY) * newD / curD }));
-        setDesign(d);
-        setFeedback(`Resized room to ${match[1]}m × ${match[2]}m.`);
-      } else {
-        setFeedback('For a new room shape, use the Room Shape tool. I can resize with "5m x 4m".');
-      }
-      setBusy(false); setInput('');
-      setTimeout(() => setFeedback(null), 5000);
-    }, 700);
+    const text = input.trim();
+    if (!text) return;
+    setShowSuggestions(false);
+    const result = resizeRoom(useStore.getState().design, text);
+    setFeedback(result.message);
+    if (result.ok) {
+      setDesign(result.design);
+      setInput('');
+    }
+    window.setTimeout(() => setFeedback(null), 5000);
   };
 
   return (
-    <div className="ai-prompt-wrap">
-      <div className="ai-prompt">
+    <div className="resize-room-wrap">
+      <div className="resize-room">
         <input type="text" value={input} onChange={(e) => setInput(e.target.value)}
           onFocus={() => setShowSuggestions(true)} onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
           onKeyDown={(e) => { if (e.key === 'Enter') handleSend(); }}
-          placeholder='Describe your kitchen — e.g. "5m x 4m with an island"' />
-        <button className="ai-send" onClick={handleSend} disabled={!input.trim() || busy}>
-          <svg viewBox="0 0 20 20" width="14" height="14" fill="currentColor"><path d="M10 2 L11.4 7.6 L17 9 L11.4 10.4 L10 16 L8.6 10.4 L3 9 L8.6 7.6 Z"/></svg>
-          <span>{busy ? 'Thinking…' : 'Design'}</span>
+          aria-label="Resize room"
+          placeholder="Resize room — e.g. 5m x 4m" />
+        <button className="resize-room-submit" onClick={handleSend} disabled={!input.trim()}>
+          Resize
         </button>
       </div>
       {showSuggestions && !input && (
-        <div className="ai-suggestions">
-          {['4m × 3m L-shape with an island', 'Galley kitchen, 3m × 2.5m', '5m × 4m with a dining table for six', 'U-shape, 4.5m × 3.5m'].map((s, i) => (
-            <button key={i} onMouseDown={() => setInput(s)}>{s}</button>
+        <div className="resize-room-suggestions">
+          {RESIZE_SUGGESTIONS.map((s) => (
+            <button key={s} onMouseDown={() => setInput(s)}>{s}</button>
           ))}
         </div>
       )}
-      {feedback && <div className="ai-feedback">{feedback}</div>}
+      {feedback && <div className="resize-room-feedback">{feedback}</div>}
     </div>
   );
 }

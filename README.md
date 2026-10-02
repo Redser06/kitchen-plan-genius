@@ -31,5 +31,7 @@ npm run dev
 
 The plan toolbar’s **3D** and **Walk** buttons open a WebGL kitchen built from the current plan (or a sample kitchen when the room has fewer than three corners).
 
-- **3D** — drag to orbit, scroll to zoom, click a unit to select it, click the floor to clear the selection.
-- **Walk** — click the view to look around, WASD or the arrow keys to move, Shift to move faster, Esc to release the pointer. You start just inside the door, facing the middle of the room.
+- **3D** — drag to orbit, scroll to zoom, click a unit to select it, click the floor to clear the selection. Walls nearest the camera fade so you can see into the room.
+- **Walk** — click the view to look around, WASD or the arrow keys to move, Shift to move faster, Esc to release the pointer. You start just inside the door, facing the middle of the room. A wall fades when you stand against it.
+
+Cabinet fronts follow the plan finish (Shaker, Slab, or Beadboard) and the colour scheme. Worktops, floors, and walls use generated textures. Sockets and switches from the plan appear on the walls. When the plan has a sink, hob, and fridge, their work triangle is drawn at counter height.

@@ -294,6 +294,8 @@ describe("buildWalkthroughScene", () => {
     expect(scene.workTriangle?.sink.z).toBeCloseTo(2.3);
     expect(scene.workTriangle?.hob.x).toBeCloseTo(3.3);
     expect(scene.workTriangle?.hob.z).toBeCloseTo(2.3);
+    expect(scene.workTriangle?.fridge.x).toBeCloseTo(5.1);
+    expect(scene.workTriangle?.fridge.z).toBeCloseTo(1.1);
     expect(scene.workTriangle?.elevation).toBeGreaterThan(0.8);
   });
 

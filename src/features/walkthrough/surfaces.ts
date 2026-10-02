@@ -7,6 +7,17 @@ export type SurfaceKind = "cabinet" | "worktop" | "floor" | "wall" | "splash" | 
 
 const cache = new Map<string, THREE.MeshStandardMaterial>();
 
+/** Drop cached finish textures. Call when the walkthrough unmounts. */
+export function disposeSurfaceCache() {
+  for (const material of cache.values()) {
+    material.map?.dispose();
+    material.roughnessMap?.dispose();
+    material.bumpMap?.dispose();
+    material.dispose();
+  }
+  cache.clear();
+}
+
 export function surfaceMaterial(
   kind: SurfaceKind,
   color: string,

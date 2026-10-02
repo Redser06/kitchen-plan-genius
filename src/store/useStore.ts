@@ -3,7 +3,7 @@
 // ============================================================================
 
 import { create } from 'zustand';
-import { workTriangleOf } from '../domain/geometry';
+import { sinkLacksNearbyPlumbing, workTriangleOf } from '../domain/geometry';
 import type { KitchenDesign, Carcass, Furniture, Fixture, Vec2, DesignAnalysis, Materials, ColourScheme } from '../domain/types';
 
 function defaultDesign(): KitchenDesign {
@@ -74,9 +74,7 @@ function computeAnalysis(design: KitchenDesign): DesignAnalysis {
   const waterFixtures = fixtures.filter((f) => f.type === 'water');
   const wasteFixtures = fixtures.filter((f) => f.type === 'waste');
   sinkCarcasses.forEach((c) => {
-    const ctr = { x: c.position.x + c.size / 2, y: c.position.y + c.depth / 2 };
-    const nd = (list: Fixture[]) => list.length === 0 ? Infinity : Math.min(...list.map((f) => Math.hypot(f.position!.x - ctr.x, f.position!.y - ctr.y)));
-    if (nd(waterFixtures) > 1500 || nd(wasteFixtures) > 1500)
+    if (sinkLacksNearbyPlumbing(c, waterFixtures, wasteFixtures))
       issues.push({ id: 'plumbing-' + c.id, severity: 'warning', message: 'Sink is missing nearby plumbing', detail: `${c.label || 'Sink'} has no water/waste within 1.5m.`, fix: 'Add Water supply and Waste point near this sink.' });
   });
 

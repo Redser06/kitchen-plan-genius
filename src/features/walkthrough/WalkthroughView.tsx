@@ -13,6 +13,7 @@ import type { KitchenDesign } from "../../domain/types";
 import { KitchenRoom } from "./KitchenRoom";
 import { Walker, type WalkPose } from "./Walker";
 import { buildWalkthroughScene, polygonCentroid, type WalkthroughScene } from "./plan-scene";
+import { disposeSurfaceCache } from "./surfaces";
 
 export default function WalkthroughView({
   design,
@@ -27,6 +28,7 @@ export default function WalkthroughView({
 }) {
   const scene = useMemo(() => buildWalkthroughScene(design), [design]);
   const pose = useWalkPose(scene.spawn);
+  useEffect(() => () => disposeSurfaceCache(), []);
   const cabinetCount = new Set(
     scene.items.filter((item) => item.role === "cabinet").map((item) => item.sourceId),
   ).size;

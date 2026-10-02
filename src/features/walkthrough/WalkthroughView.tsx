@@ -1,7 +1,6 @@
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Component, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { PCFSoftShadowMap } from "three";
 import type { KitchenDesign } from "../../domain/types";
 import { KitchenRoom } from "./KitchenRoom";
 import { Walker } from "./Walker";
@@ -33,7 +32,6 @@ export default function WalkthroughView({
           camera={{ fov: mode === "walk" ? 62 : 48, near: 0.08, far: 80, position: [3, 4, 6] }}
           onCreated={({ gl }) => {
             gl.setClearColor("#efe6da");
-            gl.shadowMap.type = PCFSoftShadowMap;
           }}
         >
           <KitchenRoom

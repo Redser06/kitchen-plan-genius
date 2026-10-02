@@ -48,6 +48,7 @@ export default function App() {
     const handleKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
       if (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT') return;
+      if (document.pointerLockElement) return;
       const store = useStore.getState();
       if (e.key === 'Escape') { store.setSelected(null); store.setSheetTab(null); store.setShowExportPanel(false); }
       if ((e.key === 'Delete' || e.key === 'Backspace') && store.selectedId) {

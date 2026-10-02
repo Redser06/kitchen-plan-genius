@@ -1,6 +1,8 @@
-import React, { useRef, useState, useCallback, useEffect } from 'react';
+import React, { useRef, useState, useCallback, useEffect, lazy, Suspense } from 'react';
 import { useStore } from '../store/useStore';
 import type { Vec2, ViewMode } from '../domain/types';
+
+const WalkthroughView = lazy(() => import('../features/walkthrough/WalkthroughView'));
 
 const MM_TO_PX = 0.16;
 
@@ -45,6 +47,16 @@ export default function KitchenCanvas({ scale, position, setScale, setPosition, 
   const toPx = (mm: number) => mm * MM_TO_PX;
   const is3D = viewMode === '3d' || viewMode === 'walk';
   const isWalk = viewMode === 'walk';
+
+  if (is3D) {
+    return (
+      <div ref={containerRef} style={{ position: 'absolute', inset: 0, background: 'var(--bg)' }}>
+        <Suspense fallback={<div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-3)', fontSize: 14 }}>Preparing the 3D kitchen…</div>}>
+          <WalkthroughView design={design} mode={isWalk ? 'walk' : 'orbit'} selectedId={selectedId} onSelect={setSelected} />
+        </Suspense>
+      </div>
+    );
+  }
 
   const clickToMm = (e: React.MouseEvent): Vec2 => {
     const rect = containerRef.current!.getBoundingClientRect();

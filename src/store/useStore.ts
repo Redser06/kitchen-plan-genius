@@ -5,6 +5,9 @@
 import { create } from 'zustand';
 import type { KitchenDesign, Carcass, Furniture, Fixture, Vec2, DesignAnalysis, Materials, ColourScheme } from '../domain/types';
 
+export const DESIGN_STORAGE_KEY = 'kitchenplan-design-v3';
+const AUTOSAVE_MS = 500;
+
 function defaultDesign(): KitchenDesign {
   return {
     room: { points: [{ x: 0, y: 0 }, { x: 4200, y: 0 }, { x: 4200, y: 3200 }, { x: 0, y: 3200 }], height: 2400 },
@@ -122,10 +125,6 @@ interface KitchenState {
   selectedCornerIndex: number | null;
   selectedWallIndex: number | null;
   showExportPanel: boolean;
-  shareLinkPublic: boolean;
-  linkCopied: boolean;
-  collaborators: { id: number; name: string; email: string; role: string }[];
-  inviteEmail: string;
 
   // Actions
   setDesign: (d: KitchenDesign) => void;
@@ -154,17 +153,11 @@ interface KitchenState {
   setSelectedWallIndex: (i: number | null) => void;
   confirmRoomDraft: () => void;
   setShowExportPanel: (v: boolean) => void;
-  setShareLinkPublic: (v: boolean) => void;
-  setLinkCopied: (v: boolean) => void;
-  setInviteEmail: (e: string) => void;
-  inviteCollaborator: () => void;
-  removeCollaborator: (id: number) => void;
-  setCollaboratorRole: (id: number, role: string) => void;
   restoreVersion: (idx: number) => void;
   undo: () => void;
   redo: () => void;
   addAmericanFridge: () => void;
-  persist: () => void;
+  persist: () => boolean;
   load: () => void;
 }
 
@@ -192,13 +185,6 @@ export const useStore = create<KitchenState>((set, get) => ({
   selectedCornerIndex: null,
   selectedWallIndex: null,
   showExportPanel: false,
-  shareLinkPublic: false,
-  linkCopied: false,
-  collaborators: [
-    { id: 1, name: 'You', email: 'owner@you.com', role: 'Owner' },
-    { id: 2, name: 'Jamie Oliver-Smith', email: 'jamie@example.com', role: 'Editor' },
-  ],
-  inviteEmail: '',
 
   setDesign: (d) => set((s) => commit(s, d)),
   updateCarcass: (id, patch) => set((s) => { const d = cloneDesign(s.design); const c = d.carcasses.find((c) => c.id === id); if (c) Object.assign(c, patch); return { design: d, analysis: computeAnalysis(d) }; }),
@@ -228,12 +214,6 @@ export const useStore = create<KitchenState>((set, get) => ({
   confirmRoomDraft: () => set((s) => { const d = cloneDesign(s.design); d.room = { ...d.room, points: s.roomDraft.points }; return { ...commit(s, d), screen: 'editor' as Screen }; }),
 
   setShowExportPanel: (v) => set({ showExportPanel: v }),
-  setShareLinkPublic: (v) => set({ shareLinkPublic: v }),
-  setLinkCopied: (v) => set({ linkCopied: v }),
-  setInviteEmail: (e) => set({ inviteEmail: e }),
-  inviteCollaborator: () => set((s) => { const email = s.inviteEmail.trim(); if (!email) return {}; return { collaborators: [...s.collaborators, { id: Date.now(), name: email.split('@')[0], email, role: 'Viewer' }], inviteEmail: '' }; }),
-  removeCollaborator: (id) => set((s) => ({ collaborators: id === 1 ? s.collaborators : s.collaborators.filter((c) => c.id !== id) })),
-  setCollaboratorRole: (id, role) => set((s) => ({ collaborators: s.collaborators.map((c) => c.id === id ? { ...c, role } : c) })),
   restoreVersion: (idx) => set((s) => ({ design: cloneDesign(s.history[idx]), historyIndex: idx, showExportPanel: false, selectedId: null })),
 
   undo: () => set((s) => s.historyIndex <= 0 ? {} : { design: cloneDesign(s.history[s.historyIndex - 1]), historyIndex: s.historyIndex - 1, selectedId: null, analysis: computeAnalysis(s.history[s.historyIndex - 1]) }),
@@ -245,15 +225,56 @@ export const useStore = create<KitchenState>((set, get) => ({
     return commit(s, d);
   }),
 
-  persist: () => { try { localStorage.setItem('kitchenplan-design-v3', JSON.stringify(get().design)); } catch {} },
+  persist: () => {
+    try {
+      localStorage.setItem(DESIGN_STORAGE_KEY, JSON.stringify(get().design));
+      return true;
+    } catch {
+      return false;
+    }
+  },
   load: () => {
     try {
-      const saved = localStorage.getItem('kitchenplan-design-v3');
-      if (saved) { const d = JSON.parse(saved) as KitchenDesign; set({ design: d, analysis: computeAnalysis(d) }); }
-      else { set({ analysis: computeAnalysis(get().design) }); }
-    } catch { try { localStorage.removeItem('kitchenplan-design-v3'); } catch {} }
+      const saved = localStorage.getItem(DESIGN_STORAGE_KEY);
+      if (saved) {
+        const d = JSON.parse(saved) as KitchenDesign;
+        set({
+          design: d,
+          analysis: computeAnalysis(d),
+          history: [cloneDesign(d)],
+          historyIndex: 0,
+          roomDraft: { points: d.room.points.map((p) => ({ ...p })) },
+          selectedId: null,
+        });
+      } else {
+        set({ analysis: computeAnalysis(get().design) });
+      }
+    } catch {
+      try { localStorage.removeItem(DESIGN_STORAGE_KEY); } catch { /* ignore quota / private mode */ }
+    }
   },
 }));
+
+/** Debounce writes of `design` and report each successful save. `flush` writes immediately. */
+export function subscribeDesignAutosave(onSaved: () => void, delay = AUTOSAVE_MS) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const unsubscribe = useStore.subscribe((state, prev) => {
+    if (state.design === prev.design) return;
+    if (timer !== undefined) clearTimeout(timer);
+    timer = setTimeout(() => {
+      timer = undefined;
+      if (useStore.getState().persist()) onSaved();
+    }, delay);
+  });
+  const flush = () => {
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      timer = undefined;
+    }
+    return useStore.getState().persist();
+  };
+  return { unsubscribe, flush };
+}
 
 // Compute analysis on init
 useStore.getState().analysis = computeAnalysis(useStore.getState().design);

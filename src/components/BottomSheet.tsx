@@ -128,6 +128,7 @@ function ComponentsPanel() {
 function MeasurePanel() {
   const design = useStore((s) => s.design);
   const updateRoomHeight = useStore((s) => s.updateRoomHeight);
+  const commitGesture = useStore((s) => s.commitGesture);
   const setScreen = useStore((s) => s.setScreen);
   const pts = design.room.points;
   const floorArea = Math.abs(pts.reduce((s, p, i) => s + p.x * pts[(i + 1) % pts.length].y - pts[(i + 1) % pts.length].x * p.y, 0)) / 2;
@@ -144,7 +145,7 @@ function MeasurePanel() {
       <div className="section-label">Ceiling height</div>
       <div className="measure-row">
         <label>Height</label>
-        <input type="range" min={2200} max={3200} step={50} value={design.room.height} onChange={(e) => updateRoomHeight(Number(e.target.value))} />
+        <input type="range" min={2200} max={3200} step={50} value={design.room.height} onChange={(e) => updateRoomHeight(Number(e.target.value), { recordHistory: false })} onPointerUp={() => commitGesture()} onKeyUp={() => commitGesture()} onBlur={() => commitGesture()} />
         <div className="val">{(design.room.height / 1000).toFixed(2)}m</div>
       </div>
 

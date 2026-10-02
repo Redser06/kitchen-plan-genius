@@ -22,6 +22,7 @@ export default function KitchenCanvas({ scale, position, setScale, setPosition, 
   const addFurniture = useStore((s) => s.addFurniture);
   const updateCarcass = useStore((s) => s.updateCarcass);
   const updateFurniture = useStore((s) => s.updateFurniture);
+  const commitGesture = useStore((s) => s.commitGesture);
   const addFixture = useStore((s) => s.addFixture);
   const analysis = useStore((s) => s.analysis);
   const colours = useStore((s) => s.design.colours);
@@ -175,8 +176,8 @@ export default function KitchenCanvas({ scale, position, setScale, setPosition, 
       const dyVB = (e.clientY - ds.sy) * (700 / ds.rh);
       if (Math.abs(dxVB) > 1 || Math.abs(dyVB) > 1) ds.moved = true;
       const np = { x: ds.startPos.x + dxVB / (scale * MM_TO_PX), y: ds.startPos.y + dyVB / (scale * MM_TO_PX) };
-      if (ds.type === 'carcass') updateCarcass(ds.id, { position: np });
-      else updateFurniture(ds.id, { position: np });
+      if (ds.type === 'carcass') updateCarcass(ds.id, { position: np }, { recordHistory: false });
+      else updateFurniture(ds.id, { position: np }, { recordHistory: false });
     }
     if (panState) {
       const rect = containerRef.current!.getBoundingClientRect();
@@ -190,9 +191,17 @@ export default function KitchenCanvas({ scale, position, setScale, setPosition, 
       let newRotation = rs.startRotation + (currentAngle - rs.startAngle);
       // Snap to 15° increments
       newRotation = Math.round(newRotation / 15) * 15;
-      if (rs.type === 'carcass') updateCarcass(rs.id, { rotation: newRotation });
-      else updateFurniture(rs.id, { rotation: newRotation });
+      if (rs.type === 'carcass') updateCarcass(rs.id, { rotation: newRotation }, { recordHistory: false });
+      else updateFurniture(rs.id, { rotation: newRotation }, { recordHistory: false });
     }
+  };
+
+  const endGesture = () => {
+    const record = Boolean(dragState?.moved || rotationState);
+    setDragState(null);
+    setPanState(null);
+    setRotationState(null);
+    if (record) commitGesture();
   };
 
   const errorCount = analysis ? analysis.issues.filter((i: any) => i.severity === 'error').length : 0;
@@ -225,7 +234,7 @@ export default function KitchenCanvas({ scale, position, setScale, setPosition, 
 
   return (
     <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', background: 'var(--bg)' }}
-      onMouseUp={() => { setDragState(null); setPanState(null); setRotationState(null); }} onMouseLeave={() => { setDragState(null); setPanState(null); setRotationState(null); }}>
+      onMouseUp={endGesture} onMouseLeave={endGesture}>
       <svg viewBox="0 0 1000 700" width="100%" height="100%" style={{ display: 'block', cursor }}
         onMouseMove={onCanvasMouseMove}>
         <rect x={-2000} y={-2000} width={6000} height={6000} fill="var(--bg)"

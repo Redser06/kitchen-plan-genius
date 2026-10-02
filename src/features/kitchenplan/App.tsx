@@ -6,6 +6,7 @@ import ContextPanel from '@/components/ContextPanel';
 import RoomShapeDesigner from '@/components/RoomShapeDesigner';
 import ExportPanel from '@/components/ExportPanel';
 import { subscribeDesignAutosave, useStore } from '@/store/useStore';
+import { parseDesignText } from '@/domain/design-io';
 import type { Vec2 } from '@/domain/types';
 import kitchenplanCssUrl from './kitchenplan.css?url';
 import { RESIZE_SUGGESTIONS, resizeRoom } from './resizeRoom';
@@ -108,7 +109,11 @@ export default function App() {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (!file) return;
       const reader = new FileReader();
-      reader.onload = (ev) => { try { const parsed = JSON.parse(ev.target?.result as string); if (parsed.room && parsed.carcasses) useStore.getState().setDesign(parsed); else alert('Invalid file'); } catch { alert('Could not read file'); } };
+      reader.onload = (ev) => {
+        const result = parseDesignText(String(ev.target?.result ?? ''));
+        if (result.ok) useStore.getState().setDesign(result.design);
+        else alert(result.error === 'unreadable' ? 'Could not read file' : 'Invalid file');
+      };
       reader.readAsText(file);
     };
     input.click();

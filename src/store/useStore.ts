@@ -3,10 +3,14 @@
 // ============================================================================
 
 import { create } from 'zustand';
-import { sinkLacksNearbyPlumbing, workTriangleOf } from '../domain/geometry';
 import type { KitchenDesign, Carcass, Furniture, Fixture, Vec2, DesignAnalysis, Materials, ColourScheme } from '../domain/types';
+import { computeAnalysis } from '../domain/analysis';
+import { DESIGN_STORAGE_KEY, parsePersistedDesign, serializeDesign } from '../domain/design-io';
+import { cloneDesign, commitHistory, redoHistory, sameDesign, undoHistory } from '../domain/history';
 
-export const DESIGN_STORAGE_KEY = 'kitchenplan-design-v3';
+type PatchOptions = { recordHistory?: boolean };
+
+export { DESIGN_STORAGE_KEY };
 const AUTOSAVE_MS = 500;
 
 function defaultDesign(): KitchenDesign {
@@ -36,60 +40,6 @@ function defaultDesign(): KitchenDesign {
   };
 }
 
-function cloneDesign(d: KitchenDesign): KitchenDesign { return JSON.parse(JSON.stringify(d)); }
-
-// --- Analysis ---
-function polygonArea(pts: Vec2[]): number {
-  let a = 0; const n = pts.length;
-  for (let i = 0; i < n; i++) { const p1 = pts[i], p2 = pts[(i + 1) % n]; a += p1.x * p2.y - p2.x * p1.y; }
-  return Math.abs(a) / 2;
-}
-
-function computeAnalysis(design: KitchenDesign): DesignAnalysis {
-  const room = design.room, carcasses = design.carcasses, furniture = design.furniture, fixtures = design.fixtures;
-  const floorAreaM2 = polygonArea(room.points) / 1e6;
-  const glazingAreaM2 = fixtures.filter((f) => f.type === 'window').reduce((s, f) => s + (f.width! * 1200) / 1e6, 0);
-  const lightRatio = floorAreaM2 > 0 ? glazingAreaM2 / floorAreaM2 : 0;
-  let rating = 'poor';
-  if (lightRatio >= 0.3) rating = 'excellent'; else if (lightRatio >= 0.2) rating = 'good'; else if (lightRatio >= 0.1) rating = 'adequate';
-  const light = { floorAreaM2, glazingAreaM2, lightRatio, rating };
-
-  const triangle = workTriangleOf(carcasses);
-
-  let walkway: any = null;
-  if (furniture.length > 0 && carcasses.length > 0) {
-    const runFrontY = Math.min(...carcasses.map((c) => c.position.y));
-    const table = furniture[0];
-    const clearance = runFrontY - (table.position.y + table.depth);
-    walkway = { clearance, status: clearance < 600 ? 'error' : clearance < 900 ? 'warning' : 'ok' };
-  }
-
-  const issues: any[] = [];
-  if (triangle && triangle.status === 'warning')
-    issues.push({ id: 'triangle', severity: 'warning', message: 'Work triangle is outside the ideal range', detail: `Perimeter ${Math.round(triangle.perimeter)}mm (ideal 4000–6600mm)`, fix: 'Reposition the sink, hob, or fridge.' });
-  if (walkway && walkway.status !== 'ok')
-    issues.push({ id: 'walkway', severity: walkway.status, message: 'Tight clearance behind the dining table', detail: `${Math.round(walkway.clearance)}mm gap — 900mm minimum recommended`, fix: `Move the table ${Math.max(0, Math.round(900 - walkway.clearance))}mm toward the opposite wall.` });
-  if (rating === 'poor')
-    issues.push({ id: 'light', severity: 'warning', message: 'Natural light is limited', detail: 'Glazing area is below 10% of floor area.', fix: 'Add a window from the Fixtures tab.' });
-
-  // Plumbing validation
-  const sinkCarcasses = carcasses.filter((c) => c.applianceType === 'sink');
-  const waterFixtures = fixtures.filter((f) => f.type === 'water');
-  const wasteFixtures = fixtures.filter((f) => f.type === 'waste');
-  sinkCarcasses.forEach((c) => {
-    if (sinkLacksNearbyPlumbing(c, waterFixtures, wasteFixtures))
-      issues.push({ id: 'plumbing-' + c.id, severity: 'warning', message: 'Sink is missing nearby plumbing', detail: `${c.label || 'Sink'} has no water/waste within 1.5m.`, fix: 'Add Water supply and Waste point near this sink.' });
-  });
-
-  // Socket validation
-  if (carcasses.filter((c) => c.applianceType).length > 0 && fixtures.filter((f) => f.type === 'socket').length === 0)
-    issues.push({ id: 'sockets', severity: 'warning', message: 'No electrical sockets placed', detail: 'You have appliances but no sockets.', fix: 'Add sockets near your appliance run.' });
-
-  if (issues.length === 0) issues.push({ id: 'ok', severity: 'ok', message: 'No issues detected', detail: 'Your layout meets standard guidelines.', fix: null });
-
-  return { light, triangle, walkway, issues };
-}
-
 export type Screen = 'editor' | 'room-setup';
 export type ViewMode = '2d' | '3d' | 'walk';
 export type SheetTab = 'components' | 'measure' | 'materials' | 'fixtures' | 'analysis' | null;
@@ -115,17 +65,17 @@ interface KitchenState {
 
   // Actions
   setDesign: (d: KitchenDesign) => void;
-  updateCarcass: (id: string, patch: Partial<Carcass>) => void;
+  updateCarcass: (id: string, patch: Partial<Carcass>, options?: PatchOptions) => void;
   removeCarcass: (id: string) => void;
   addCarcass: (c: Carcass) => void;
-  updateFurniture: (id: string, patch: Partial<Furniture>) => void;
+  updateFurniture: (id: string, patch: Partial<Furniture>, options?: PatchOptions) => void;
   removeFurniture: (id: string) => void;
   addFurniture: (f: Furniture) => void;
   removeFixture: (id: string) => void;
   addFixture: (f: Fixture) => void;
   updateColours: (patch: Partial<ColourScheme>) => void;
   updateMaterials: (patch: Partial<Materials>) => void;
-  updateRoomHeight: (h: number) => void;
+  updateRoomHeight: (h: number, options?: PatchOptions) => void;
   setScreen: (s: Screen) => void;
   setSelected: (id: string | null) => void;
   setTool: (t: Tool) => void;
@@ -142,15 +92,24 @@ interface KitchenState {
   restoreVersion: (idx: number) => void;
   undo: () => void;
   redo: () => void;
+  commitGesture: () => void;
   addAmericanFridge: () => void;
   persist: () => boolean;
   load: () => void;
 }
 
-function commit(state: any, newDesign: KitchenDesign) {
-  const history = state.history.slice(0, state.historyIndex + 1);
-  history.push(cloneDesign(newDesign));
-  return { design: newDesign, analysis: computeAnalysis(newDesign), history, historyIndex: history.length - 1 };
+function commit(state: { history: KitchenDesign[]; historyIndex: number }, newDesign: KitchenDesign) {
+  const next = commitHistory(state, newDesign);
+  return { design: newDesign, analysis: computeAnalysis(newDesign), history: next.history, historyIndex: next.historyIndex };
+}
+
+function patchDesign(
+  state: { history: KitchenDesign[]; historyIndex: number },
+  next: KitchenDesign,
+  options?: PatchOptions,
+) {
+  if (options?.recordHistory === false) return { design: next, analysis: computeAnalysis(next) };
+  return commit(state, next);
 }
 
 export const useStore = create<KitchenState>((set, get) => ({
@@ -172,17 +131,44 @@ export const useStore = create<KitchenState>((set, get) => ({
   showExportPanel: false,
 
   setDesign: (d) => set((s) => commit(s, d)),
-  updateCarcass: (id, patch) => set((s) => { const d = cloneDesign(s.design); const c = d.carcasses.find((c) => c.id === id); if (c) Object.assign(c, patch); return { design: d, analysis: computeAnalysis(d) }; }),
-  removeCarcass: (id) => set((s) => { const d = cloneDesign(s.design); d.carcasses = d.carcasses.filter((c) => c.id !== id); return { design: d, analysis: computeAnalysis(d), selectedId: s.selectedId === id ? null : s.selectedId }; }),
+  updateCarcass: (id, patch, options) => set((s) => {
+    const d = cloneDesign(s.design);
+    const carcass = d.carcasses.find((item) => item.id === id);
+    if (!carcass) return {};
+    Object.assign(carcass, patch);
+    return patchDesign(s, d, options);
+  }),
+  removeCarcass: (id) => set((s) => {
+    if (!s.design.carcasses.some((item) => item.id === id)) return {};
+    const d = cloneDesign(s.design);
+    d.carcasses = d.carcasses.filter((item) => item.id !== id);
+    return { ...commit(s, d), selectedId: s.selectedId === id ? null : s.selectedId };
+  }),
   addCarcass: (c) => set((s) => { const d = cloneDesign(s.design); d.carcasses.push(c); return commit(s, d); }),
-  updateFurniture: (id, patch) => set((s) => { const d = cloneDesign(s.design); const f = d.furniture.find((f) => f.id === id); if (f) Object.assign(f, patch); return { design: d, analysis: computeAnalysis(d) }; }),
-  removeFurniture: (id) => set((s) => { const d = cloneDesign(s.design); d.furniture = d.furniture.filter((f) => f.id !== id); return { design: d, analysis: computeAnalysis(d), selectedId: s.selectedId === id ? null : s.selectedId }; }),
+  updateFurniture: (id, patch, options) => set((s) => {
+    const d = cloneDesign(s.design);
+    const furniture = d.furniture.find((item) => item.id === id);
+    if (!furniture) return {};
+    Object.assign(furniture, patch);
+    return patchDesign(s, d, options);
+  }),
+  removeFurniture: (id) => set((s) => {
+    if (!s.design.furniture.some((item) => item.id === id)) return {};
+    const d = cloneDesign(s.design);
+    d.furniture = d.furniture.filter((item) => item.id !== id);
+    return { ...commit(s, d), selectedId: s.selectedId === id ? null : s.selectedId };
+  }),
   addFurniture: (f) => set((s) => { const d = cloneDesign(s.design); d.furniture.push(f); return commit(s, d); }),
-  removeFixture: (id) => set((s) => { const d = cloneDesign(s.design); d.fixtures = d.fixtures.filter((f) => f.id !== id); return { design: d, analysis: computeAnalysis(d), selectedId: s.selectedId === id ? null : s.selectedId }; }),
+  removeFixture: (id) => set((s) => {
+    if (!s.design.fixtures.some((item) => item.id === id)) return {};
+    const d = cloneDesign(s.design);
+    d.fixtures = d.fixtures.filter((item) => item.id !== id);
+    return { ...commit(s, d), selectedId: s.selectedId === id ? null : s.selectedId };
+  }),
   addFixture: (f) => set((s) => { const d = cloneDesign(s.design); d.fixtures.push(f); return commit(s, d); }),
-  updateColours: (patch) => set((s) => { const d = cloneDesign(s.design); d.colours = { ...d.colours, ...patch }; return { design: d, analysis: computeAnalysis(d) }; }),
-  updateMaterials: (patch) => set((s) => { const d = cloneDesign(s.design); d.materials = { ...d.materials, ...patch }; return { design: d, analysis: computeAnalysis(d) }; }),
-  updateRoomHeight: (h) => set((s) => { const d = cloneDesign(s.design); d.room = { ...d.room, height: h }; return { design: d, analysis: computeAnalysis(d) }; }),
+  updateColours: (patch) => set((s) => { const d = cloneDesign(s.design); d.colours = { ...d.colours, ...patch }; return commit(s, d); }),
+  updateMaterials: (patch) => set((s) => { const d = cloneDesign(s.design); d.materials = { ...d.materials, ...patch }; return commit(s, d); }),
+  updateRoomHeight: (h, options) => set((s) => { const d = cloneDesign(s.design); d.room = { ...d.room, height: h }; return patchDesign(s, d, options); }),
 
   setScreen: (s) => set({ screen: s }),
   setSelected: (id) => set({ selectedId: id }),
@@ -200,8 +186,20 @@ export const useStore = create<KitchenState>((set, get) => ({
   setShowExportPanel: (v) => set({ showExportPanel: v }),
   restoreVersion: (idx) => set((s) => ({ design: cloneDesign(s.history[idx]), historyIndex: idx, showExportPanel: false, selectedId: null })),
 
-  undo: () => set((s) => s.historyIndex <= 0 ? {} : { design: cloneDesign(s.history[s.historyIndex - 1]), historyIndex: s.historyIndex - 1, selectedId: null, analysis: computeAnalysis(s.history[s.historyIndex - 1]) }),
-  redo: () => set((s) => s.historyIndex >= s.history.length - 1 ? {} : { design: cloneDesign(s.history[s.historyIndex + 1]), historyIndex: s.historyIndex + 1, selectedId: null, analysis: computeAnalysis(s.history[s.historyIndex + 1]) }),
+  undo: () => set((s) => {
+    const step = undoHistory(s);
+    if (!step) return {};
+    return { design: step.value, historyIndex: step.historyIndex, selectedId: null, analysis: computeAnalysis(step.value) };
+  }),
+  redo: () => set((s) => {
+    const step = redoHistory(s);
+    if (!step) return {};
+    return { design: step.value, historyIndex: step.historyIndex, selectedId: null, analysis: computeAnalysis(step.value) };
+  }),
+  commitGesture: () => set((s) => {
+    if (sameDesign(s.history[s.historyIndex], s.design)) return {};
+    return commit(s, s.design);
+  }),
 
   addAmericanFridge: () => set((s) => {
     const d = cloneDesign(s.design);
@@ -211,7 +209,7 @@ export const useStore = create<KitchenState>((set, get) => ({
 
   persist: () => {
     try {
-      localStorage.setItem(DESIGN_STORAGE_KEY, JSON.stringify(get().design));
+      localStorage.setItem(DESIGN_STORAGE_KEY, serializeDesign(get().design));
       return true;
     } catch {
       return false;
@@ -220,19 +218,24 @@ export const useStore = create<KitchenState>((set, get) => ({
   load: () => {
     try {
       const saved = localStorage.getItem(DESIGN_STORAGE_KEY);
-      if (saved) {
-        const d = JSON.parse(saved) as KitchenDesign;
-        set({
-          design: d,
-          analysis: computeAnalysis(d),
-          history: [cloneDesign(d)],
-          historyIndex: 0,
-          roomDraft: { points: d.room.points.map((p) => ({ ...p })) },
-          selectedId: null,
-        });
-      } else {
+      if (!saved) {
         set({ analysis: computeAnalysis(get().design) });
+        return;
       }
+      const design = parsePersistedDesign(saved);
+      if (!design) {
+        localStorage.removeItem(DESIGN_STORAGE_KEY);
+        set({ analysis: computeAnalysis(get().design) });
+        return;
+      }
+      set({
+        design,
+        analysis: computeAnalysis(design),
+        history: [cloneDesign(design)],
+        historyIndex: 0,
+        roomDraft: { points: design.room.points.map((p) => ({ ...p })) },
+        selectedId: null,
+      });
     } catch {
       try { localStorage.removeItem(DESIGN_STORAGE_KEY); } catch { /* ignore quota / private mode */ }
     }

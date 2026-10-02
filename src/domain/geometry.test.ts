@@ -8,11 +8,13 @@ function unit(
   appliance: Carcass["applianceType"],
   position: { x: number; y: number },
   rotation: number,
+  size: Carcass["size"] = 600,
+  depth: Carcass["depth"] = 600,
 ): Carcass {
   return {
     id,
-    size: 600,
-    depth: 600,
+    size,
+    depth,
     mount: appliance === "fridge" ? "tall" : "floor",
     position,
     rotation,
@@ -36,6 +38,12 @@ describe("rotatedFootprintCenter", () => {
     expect(center.x).toBeCloseTo(700);
     expect(center.y).toBeCloseTo(2300);
     expect(center).not.toEqual({ x: 1300, y: 2300 });
+  });
+
+  it("uses depth along plan x when a non-square unit is turned 90 degrees", () => {
+    const center = rotatedFootprintCenter({ x: 0, y: 0 }, 90, 1000, 500);
+    expect(center.x).toBeCloseTo(-250);
+    expect(center.y).toBeCloseTo(500);
   });
 });
 

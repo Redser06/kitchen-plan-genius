@@ -29,7 +29,7 @@ export default function WalkthroughView({
         <Canvas
           shadows
           dpr={[1, 1.75]}
-          camera={{ fov: mode === "walk" ? 62 : 48, near: 0.08, far: 80, position: [3, 4, 6] }}
+          camera={{ fov: 55, near: 0.08, far: 80 }}
           onCreated={({ gl }) => {
             gl.setClearColor("#efe6da");
           }}

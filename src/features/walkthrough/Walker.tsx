@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
+import type { PerspectiveCamera } from "three";
 import { EYE_HEIGHT, constrainWalker, type WalkthroughScene } from "./plan-scene";
 import { publishWalkPose } from "./walk-pose";
 
@@ -11,17 +12,23 @@ export function Walker({ scene }: { scene: WalkthroughScene }) {
   const { camera, gl } = useThree();
   const keys = useRef<Record<string, boolean>>({});
   const yaw = useRef(scene.spawn.yaw);
-  const pitch = useRef(-0.06);
+  const pitch = useRef(-0.08);
   const locked = useRef(false);
+  const moved = useRef(false);
   const sceneRef = useRef(scene);
   sceneRef.current = scene;
 
+  const placeAtSpawn = () => {
+    const placed = placeWalker(camera as PerspectiveCamera, sceneRef.current);
+    yaw.current = placed.yaw;
+    pitch.current = placed.pitch;
+  };
+
   useEffect(() => {
-    const spawn = sceneRef.current.spawn;
-    camera.position.set(spawn.x, EYE_HEIGHT, spawn.z);
-    yaw.current = spawn.yaw;
-    pitch.current = -0.06;
-    camera.rotation.order = "YXZ";
+    moved.current = false;
+    const placed = placeWalker(camera as PerspectiveCamera, sceneRef.current);
+    yaw.current = placed.yaw;
+    pitch.current = placed.pitch;
   }, [camera]);
 
   useEffect(() => {
@@ -35,6 +42,7 @@ export function Walker({ scene }: { scene: WalkthroughScene }) {
     const up = (event: KeyboardEvent) => onKey(event, false);
     const look = (event: MouseEvent) => {
       if (!locked.current) return;
+      moved.current = true;
       yaw.current -= event.movementX * LOOK_SPEED;
       pitch.current = Math.max(-1.15, Math.min(1.05, pitch.current - event.movementY * LOOK_SPEED));
     };
@@ -96,9 +104,22 @@ export function Walker({ scene }: { scene: WalkthroughScene }) {
     let dx = 0;
     let dz = 0;
     if (mx !== 0 || mz !== 0) {
+      moved.current = true;
       const length = Math.hypot(mx, mz);
       dx = (mx / length) * speed;
       dz = (mz / length) * speed;
+    }
+    // The canvas camera prop can reset the pose on the same tick the walker mounts.
+    // Hold the doorway spawn until the user actually looks or walks.
+    if (!moved.current) {
+      placeAtSpawn();
+      publishWalkPose({
+        x: camera.position.x,
+        z: camera.position.z,
+        yaw: yaw.current,
+        locked: locked.current,
+      });
+      return;
     }
     const next = constrainWalker({ x: camera.position.x + dx, z: camera.position.z + dz }, current);
     camera.position.set(next.x, EYE_HEIGHT, next.z);
@@ -108,6 +129,16 @@ export function Walker({ scene }: { scene: WalkthroughScene }) {
   });
 
   return null;
+}
+
+function placeWalker(camera: PerspectiveCamera, scene: WalkthroughScene) {
+  const spawn = scene.spawn;
+  camera.fov = 62;
+  camera.updateProjectionMatrix();
+  camera.position.set(spawn.x, EYE_HEIGHT, spawn.z);
+  camera.rotation.order = "YXZ";
+  camera.rotation.set(-0.08, spawn.yaw, 0);
+  return { yaw: spawn.yaw, pitch: -0.08 };
 }
 
 function isWalkKey(code: string) {

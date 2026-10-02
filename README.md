@@ -26,3 +26,10 @@ cd <repository-name>
 npm i
 npm run dev
 ```
+
+`bun run test` runs the walkthrough unit tests. `bun run build` typechecks and builds the app.
+
+The plan toolbar’s **3D** and **Walk** buttons open a WebGL kitchen built from the current plan (or a sample kitchen when the room has fewer than three corners).
+
+- **3D** — drag to orbit, scroll to zoom, click a unit to select it, click the floor to clear the selection.
+- **Walk** — click the view to look around, WASD or the arrow keys to move, Shift to move faster, Esc to release the pointer. You start just inside the door, facing the middle of the room.

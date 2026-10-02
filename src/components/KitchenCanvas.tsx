@@ -26,8 +26,6 @@ export default function KitchenCanvas({ scale, position, setScale, setPosition, 
   const analysis = useStore((s) => s.analysis);
   const colours = useStore((s) => s.design.colours);
   const materials = useStore((s) => s.design.materials);
-  const walkIndex = useStore((s) => s.walkIndex);
-  const setWalkIndex = useStore((s) => s.setWalkIndex);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ width: 800, height: 600 });
@@ -72,56 +70,7 @@ export default function KitchenCanvas({ scale, position, setScale, setPosition, 
     return { p1, p2, ux: dx / len, uy: dy / len, len };
   };
 
-  const fixturePoint = (f: any): Vec2 => {
-    if (f.wallIndex !== undefined) {
-      const g = wallGeom(f.wallIndex);
-      return { x: g.p1.x + g.ux * g.len * f.t, y: g.p1.y + g.uy * g.len * f.t };
-    }
-    return f.position;
-  };
-
-  const iso = (x: number, y: number, z = 0) => { const a = Math.PI / 6; return { x: (x - y) * Math.cos(a), y: (x + y) * Math.sin(a) - z }; };
-  const ptsToStr = (pts: Vec2[]) => pts.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
-  const boxFaces = (cx: number, cy: number, cw: number, cd: number, hpx: number) => {
-    const top = [iso(cx, cy, hpx), iso(cx + cw, cy, hpx), iso(cx + cw, cy + cd, hpx), iso(cx, cy + cd, hpx)];
-    const front = [iso(cx, cy + cd), iso(cx + cw, cy + cd), iso(cx + cw, cy + cd, hpx), iso(cx, cy + cd, hpx)];
-    const side = [iso(cx + cw, cy), iso(cx + cw, cy + cd), iso(cx + cw, cy + cd, hpx), iso(cx + cw, cy, hpx)];
-    return { top: ptsToStr(top), front: ptsToStr(front), side: ptsToStr(side) };
-  };
-
-  // Walk mode waypoints
-  const computeWaypoints = () => {
-    const pts = design.room.points;
-    const centroid = { x: pts.reduce((s, p) => s + p.x, 0) / pts.length, y: pts.reduce((s, p) => s + p.y, 0) / pts.length };
-    const wps: { label: string; x: number; y: number }[] = [{ label: 'Room overview', x: centroid.x, y: centroid.y }];
-    const door = design.fixtures.find((f) => f.type === 'door');
-    if (door) { const dp = fixturePoint(door); wps.unshift({ label: 'Entrance', x: dp.x + (centroid.x - dp.x) * 0.3, y: dp.y + (centroid.y - dp.y) * 0.3 }); }
-    const sink = design.carcasses.find((c) => c.applianceType === 'sink');
-    if (sink) wps.push({ label: 'Sink & prep area', x: sink.position.x + sink.size / 2, y: sink.position.y - 600 });
-    const dining = design.furniture.find((f) => f.type === 'dining-table' || f.type === 'round-table');
-    if (dining) wps.push({ label: 'Dining area', x: dining.position.x + dining.width / 2, y: dining.position.y + dining.depth / 2 });
-    return wps;
-  };
-
-  const waypoints = computeWaypoints();
-  const walkIdx = Math.min(walkIndex, waypoints.length - 1);
-  const walkWp = waypoints[walkIdx] || { x: 0, y: 0, label: '' };
-
-  // Transform
-  let groupTransform = `translate(${position.x} ${position.y}) scale(${scale}) rotate(${viewRotation} 500 350)`;
-  if (isWalk) {
-    const wpIso = iso(toPx(walkWp.x), toPx(walkWp.y), 45);
-    const walkScale = 2.4;
-    groupTransform = `translate(${500 - wpIso.x * walkScale} ${380 - wpIso.y * walkScale}) scale(${walkScale})`;
-  }
-
-  // Minimap
-  const mmPts = design.room.points;
-  const mmMinX = Math.min(...mmPts.map(p => p.x)), mmMaxX = Math.max(...mmPts.map(p => p.x));
-  const mmMinY = Math.min(...mmPts.map(p => p.y)), mmMaxY = Math.max(...mmPts.map(p => p.y));
-  const mmSc = 80 / Math.max(mmMaxX - mmMinX, mmMaxY - mmMinY, 1);
-  const minimapFloor = ptsToStr(mmPts.map(p => ({ x: 10 + (p.x - mmMinX) * mmSc, y: 10 + (p.y - mmMinY) * mmSc })));
-  const minimapDot = { x: 10 + (walkWp.x - mmMinX) * mmSc, y: 10 + (walkWp.y - mmMinY) * mmSc };
+  const groupTransform = `translate(${position.x} ${position.y}) scale(${scale}) rotate(${viewRotation} 500 350)`;
 
   const onCanvasBackgroundClick = (e: React.MouseEvent<SVGRectElement>) => {
     if (tool === 'pan') return;
@@ -249,7 +198,6 @@ export default function KitchenCanvas({ scale, position, setScale, setPosition, 
   const errorCount = analysis ? analysis.issues.filter((i: any) => i.severity === 'error').length : 0;
   const warningCount = analysis ? analysis.issues.filter((i: any) => i.severity === 'warning').length : 0;
   const floorArea = Math.abs(design.room.points.reduce((s, p, i) => s + p.x * design.room.points[(i + 1) % design.room.points.length].y - design.room.points[(i + 1) % design.room.points.length].x * p.y, 0)) / 2;
-  const wallHpx = toPx(design.room.height * 0.4);
 
   // Fixtures rendering data
   const fixturesWall: any[] = [];
@@ -285,7 +233,6 @@ export default function KitchenCanvas({ scale, position, setScale, setPosition, 
           onClick={onCanvasBackgroundClick} />
 
         <g transform={groupTransform}>
-          {!is3D ? (
             <g>
               {/* Room floor */}
               <polygon points={design.room.points.map(p => `${toPx(p.x)},${toPx(p.y)}`).join(' ')} fill={colours.floor} opacity={0.35} />
@@ -387,41 +334,6 @@ export default function KitchenCanvas({ scale, position, setScale, setPosition, 
                 );
               })()}
             </g>
-          ) : (
-            // ---- 3D / Walk ----
-            <g>
-              <polygon points={ptsToStr(design.room.points.map(p => iso(toPx(p.x), toPx(p.y))))} fill={colours.floor} opacity={0.6} stroke="#D8C9B3" strokeWidth={1} />
-              {design.room.points.map((p, i) => {
-                const next = design.room.points[(i + 1) % design.room.points.length];
-                const p1 = iso(toPx(p.x), toPx(p.y)), p2 = iso(toPx(next.x), toPx(next.y));
-                return <polygon key={`3dw${i}`} points={ptsToStr([p1, p2, { x: p2.x, y: p2.y - wallHpx }, { x: p1.x, y: p1.y - wallHpx }])} fill={colours.walls} opacity={0.3 + (i % 2) * 0.2} stroke="#D8C9B3" strokeWidth={0.6} />;
-              })}
-              {design.carcasses.map((c: any) => {
-                const isSel = selectedId === c.id;
-                const cx = toPx(c.position.x), cy = toPx(c.position.y), cw = toPx(c.size), cd = toPx(c.depth);
-                const hpx = c.mount === 'tall' ? wallHpx * 0.85 : wallHpx * 0.45;
-                const faces = boxFaces(cx, cy, cw, cd, hpx);
-                return (
-                  <g key={c.id} onMouseDown={(e) => startDrag(e, c.id, 'carcass')} onClick={(e) => { e.stopPropagation(); setSelected(c.id); }} style={{ cursor: 'move' }}>
-                    <polygon points={faces.top} fill={colours.countertops} stroke={isSel ? 'var(--accent)' : '#9a9080'} strokeWidth={isSel ? 2 : 0.8} />
-                    <polygon points={faces.front} fill={colours.cabinets} stroke={isSel ? 'var(--accent)' : '#9a9080'} strokeWidth={0.8} />
-                    <polygon points={faces.side} fill={colours.cabinets} opacity={0.78} stroke={isSel ? 'var(--accent)' : '#9a9080'} strokeWidth={0.8} />
-                  </g>
-                );
-              })}
-              {design.furniture.map((f: any) => {
-                const isSel = selectedId === f.id;
-                const faces = boxFaces(toPx(f.position.x), toPx(f.position.y), toPx(f.width), toPx(f.depth), toPx(750) * 0.35);
-                return (
-                  <g key={f.id} onMouseDown={(e) => startDrag(e, f.id, 'furniture')} onClick={(e) => { e.stopPropagation(); setSelected(f.id); }} style={{ cursor: 'move' }}>
-                    <polygon points={faces.top} fill="#C9B79C" stroke={isSel ? 'var(--accent)' : '#9C8B6E'} strokeWidth={isSel ? 2 : 0.8} />
-                    <polygon points={faces.front} fill="#B9A582" stroke="#9C8B6E" strokeWidth={0.7} />
-                    <polygon points={faces.side} fill="#A6926E" stroke="#9C8B6E" strokeWidth={0.7} />
-                  </g>
-                );
-              })}
-            </g>
-          )}
         </g>
       </svg>
 
@@ -438,29 +350,6 @@ export default function KitchenCanvas({ scale, position, setScale, setPosition, 
         )}
       </div>
 
-      {/* Walk mode controls */}
-      {isWalk && (
-        <div style={{ position: 'absolute', bottom: 14, left: '50%', transform: 'translateX(-50%)', display: 'flex', alignItems: 'center', gap: 12, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '8px 16px', boxShadow: 'var(--shadow-md)' }}>
-          <button onClick={() => setWalkIndex(Math.max(0, walkIndex - 1))} disabled={walkIndex <= 0}
-            style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--bg)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-2)', cursor: walkIndex <= 0 ? 'default' : 'pointer', opacity: walkIndex <= 0 ? 0.4 : 1 }}>
-            <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5 L7 10 L12 15"/></svg>
-          </button>
-          <div>
-            <div style={{ fontFamily: 'Newsreader, serif', fontSize: 14, fontWeight: 600 }}>{walkWp.label}</div>
-            <div style={{ fontSize: 10.5, color: 'var(--text-3)' }}>{walkIdx + 1} of {waypoints.length}</div>
-          </div>
-          <button onClick={() => setWalkIndex(Math.min(waypoints.length - 1, walkIndex + 1))} disabled={walkIndex >= waypoints.length - 1}
-            style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--bg)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-2)', cursor: walkIndex >= waypoints.length - 1 ? 'default' : 'pointer', opacity: walkIndex >= waypoints.length - 1 ? 0.4 : 1 }}>
-            <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 5 L13 10 L8 15"/></svg>
-          </button>
-          {/* Minimap */}
-          <svg viewBox="0 0 100 100" width={70} height={70} style={{ marginLeft: 8 }}>
-            <polygon points={minimapFloor} fill="#EFE2D0" stroke="#D8C9B3" strokeWidth={1} />
-            <circle cx={minimapDot.x} cy={minimapDot.y} r={3.5} fill="var(--accent)" />
-          </svg>
-        </div>
-      )}
-
       {/* Rotate room view */}
       <div style={{ position: 'absolute', top: 14, right: 14, display: 'flex', gap: 6, zIndex: 10 }}>
         <button onClick={() => setViewRotation(r => r + 90)} title="Rotate view 90°"
@@ -470,17 +359,15 @@ export default function KitchenCanvas({ scale, position, setScale, setPosition, 
         </button>
       </div>
 
-      {!isWalk && (
-        <div className="canvas-hint">
-          {tool === 'place-carcass' ? `Click to place a ${selectedCarcassSize}mm cabinet` :
-           tool === 'place-furniture' ? 'Click to place furniture' :
-           ['place-door','place-window','place-socket','place-switch'].includes(tool) ? 'Click on a wall to place' :
-           ['place-water','place-waste','place-light-pendant','place-light-downlight'].includes(tool) ? 'Click on the floor to place' :
-           tool === 'pan' ? 'Drag to pan' :
-           tool === 'select' ? 'Click to select · Drag to move · Drag ↻ to rotate' :
-           'Click to select · Drag to move'}
-        </div>
-      )}
+      <div className="canvas-hint">
+        {tool === 'place-carcass' ? `Click to place a ${selectedCarcassSize}mm cabinet` :
+         tool === 'place-furniture' ? 'Click to place furniture' :
+         ['place-door','place-window','place-socket','place-switch'].includes(tool) ? 'Click on a wall to place' :
+         ['place-water','place-waste','place-light-pendant','place-light-downlight'].includes(tool) ? 'Click on the floor to place' :
+         tool === 'pan' ? 'Drag to pan' :
+         tool === 'select' ? 'Click to select · Drag to move · Drag ↻ to rotate' :
+         'Click to select · Drag to move'}
+      </div>
     </div>
   );
 }

@@ -4,6 +4,8 @@ import {
   buildWalkthroughScene,
   constrainWalker,
   EYE_HEIGHT,
+  offsetOrigin,
+  planDegreesToRotationY,
   pointInPolygon,
   polygonCentroid,
 } from "./plan-scene";
@@ -65,19 +67,22 @@ function design(overrides: Partial<KitchenDesign> = {}): KitchenDesign {
   };
 }
 
+function edgeLengths(points: { x: number; z: number }[]) {
+  return points.map((point, index) => {
+    const next = points[(index + 1) % points.length];
+    return Number(Math.hypot(next.x - point.x, next.z - point.z).toFixed(1));
+  });
+}
+
 describe("buildWalkthroughScene", () => {
-  it("turns a millimetre plan into a metre-scale room with walls, a slab, and a zone", () => {
+  it("turns a millimetre plan into a metre-scale floor the walker can stand on", () => {
     const scene = buildWalkthroughScene(design());
 
     expect(scene.usedSample).toBe(false);
-    expect(scene.siteName).toBeTruthy();
-    expect(scene.walls.map((wall) => Number(wall.length.toFixed(1)))).toEqual([4.2, 3.2, 4.2, 3.2]);
-    expect(scene.slab.polygon).toHaveLength(4);
-    expect(scene.zone.name).toBe("Kitchen");
+    expect(edgeLengths(scene.floor)).toEqual([4.2, 3.2, 4.2, 3.2]);
     expect(scene.ceilingHeight).toBeCloseTo(2.4);
-    expect(scene.openings.map((opening) => opening.kind)).toContain("door");
     expect(scene.solids.some((solid) => solid.size[1] < scene.ceilingHeight - 0.1)).toBe(true);
-    expect(pointInPolygon(scene.spawn.x, scene.spawn.z, scene.zone.polygon)).toBe(true);
+    expect(pointInPolygon(scene.spawn.x, scene.spawn.z, scene.floor)).toBe(true);
   });
 
   it("stacks a floor cabinet into plinth, carcass, and countertop", () => {
@@ -106,16 +111,60 @@ describe("buildWalkthroughScene", () => {
     const scene = buildWalkthroughScene(design({ room: { points: [], height: 2400 } }));
 
     expect(scene.usedSample).toBe(true);
-    expect(scene.walls.length).toBeGreaterThanOrEqual(4);
+    expect(scene.floor.length).toBeGreaterThanOrEqual(4);
     expect(scene.items.some((item) => item.role === "cabinet")).toBe(true);
-    expect(pointInPolygon(scene.spawn.x, scene.spawn.z, scene.zone.polygon)).toBe(true);
+    expect(pointInPolygon(scene.spawn.x, scene.spawn.z, scene.floor)).toBe(true);
   });
 
   it("keeps an empty but valid room walkable", () => {
     const scene = buildWalkthroughScene(design({ carcasses: [], fixtures: [], furniture: [] }));
+    const fullHeight = scene.solids.filter(
+      (solid) => Math.abs(solid.size[1] - scene.ceilingHeight) < 0.01,
+    );
     expect(scene.usedSample).toBe(false);
     expect(scene.items.filter((item) => item.role === "cabinet")).toHaveLength(0);
-    expect(scene.walls).toHaveLength(4);
+    expect(fullHeight.map((solid) => Number(solid.size[0].toFixed(1))).sort()).toEqual([
+      3.2, 3.2, 4.2, 4.2,
+    ]);
+  });
+
+  it("splits door and window walls into piers, a sill, and lintels", () => {
+    const scene = buildWalkthroughScene(
+      design({
+        carcasses: [],
+        furniture: [],
+        fixtures: [
+          { id: "door", type: "door", wallIndex: 0, t: 0.5, width: 900 },
+          { id: "window", type: "window", wallIndex: 1, t: 0.4, width: 1200 },
+        ],
+      }),
+    );
+    const short = scene.solids.filter((solid) => solid.size[1] < scene.ceilingHeight - 0.05);
+    const sill = short.find((solid) => solid.center[1] < 0.6 && solid.size[1] < 1.2);
+    const lintels = short.filter((solid) => solid.center[1] > 1.8);
+    const piers = scene.solids.filter(
+      (solid) => Math.abs(solid.size[1] - scene.ceilingHeight) < 0.01,
+    );
+
+    expect(sill).toBeDefined();
+    expect(sill?.size[1]).toBeCloseTo(0.9, 1);
+    expect(lintels.length).toBeGreaterThanOrEqual(2);
+    expect(piers.length).toBeGreaterThanOrEqual(2);
+    expect(piers.some((solid) => solid.size[0] < 3)).toBe(true);
+  });
+
+  it("spawns just inside the door and looks toward the room centre", () => {
+    const scene = buildWalkthroughScene(design({ carcasses: [], furniture: [] }));
+    const centre = polygonCentroid(scene.floor);
+    const dx = centre.x - scene.spawn.x;
+    const dz = centre.z - scene.spawn.z;
+    const forwardX = -Math.sin(scene.spawn.yaw);
+    const forwardZ = -Math.cos(scene.spawn.yaw);
+
+    expect(scene.spawn.x).toBeCloseTo(2.1, 1);
+    expect(scene.spawn.z).toBeCloseTo(0.9, 1);
+    expect(pointInPolygon(scene.spawn.x, scene.spawn.z, scene.floor)).toBe(true);
+    expect(forwardX * dx + forwardZ * dz).toBeGreaterThan(0);
   });
 });
 
@@ -124,12 +173,86 @@ describe("constrainWalker", () => {
     const scene = buildWalkthroughScene(design());
     const outside = constrainWalker({ x: -1, z: 1.5 }, scene);
     const insideCabinet = constrainWalker({ x: 0.5, z: 2.9 }, scene);
-    const centroid = polygonCentroid(scene.zone.polygon);
+    const centroid = polygonCentroid(scene.floor);
 
-    expect(pointInPolygon(outside.x, outside.z, scene.zone.polygon)).toBe(true);
-    expect(pointInPolygon(insideCabinet.x, insideCabinet.z, scene.zone.polygon)).toBe(true);
+    expect(pointInPolygon(outside.x, outside.z, scene.floor)).toBe(true);
+    expect(pointInPolygon(insideCabinet.x, insideCabinet.z, scene.floor)).toBe(true);
     expect(Math.hypot(insideCabinet.x - 0.5, insideCabinet.z - 2.9)).toBeGreaterThan(0.15);
-    expect(pointInPolygon(centroid.x, centroid.z, scene.zone.polygon)).toBe(true);
+    expect(pointInPolygon(centroid.x, centroid.z, scene.floor)).toBe(true);
     expect(EYE_HEIGHT).toBeGreaterThan(1.4);
+  });
+
+  it("pushes a walker out of a cabinet rotated 90 degrees on plan", () => {
+    const scene = buildWalkthroughScene(
+      design({
+        fixtures: [],
+        furniture: [],
+        carcasses: [
+          {
+            id: "turned",
+            size: 600,
+            depth: 600,
+            mount: "floor",
+            position: { x: 1000, y: 1000 },
+            rotation: 90,
+            fittingType: "plain",
+            fittingLabel: "",
+            applianceType: null,
+            applianceLabel: null,
+          },
+        ],
+      }),
+    );
+    const inside = constrainWalker({ x: 0.7, z: 1.3 }, scene);
+    const clear = constrainWalker({ x: 1.3, z: 1.3 }, scene);
+
+    expect(Math.hypot(inside.x - 0.7, inside.z - 1.3)).toBeGreaterThan(0.15);
+    expect(Math.hypot(clear.x - 1.3, clear.z - 1.3)).toBeLessThan(0.05);
+    expect(pointInPolygon(inside.x, inside.z, scene.floor)).toBe(true);
+  });
+});
+
+describe("plan orientation", () => {
+  it("keeps planDegreesToRotationY and offsetOrigin on the same clockwise mapping", () => {
+    expect(planDegreesToRotationY(0)).toBeCloseTo(0);
+    expect(planDegreesToRotationY(90)).toBeCloseTo(-Math.PI / 2);
+
+    const origin = { x: 1, z: 2 };
+    const flat = offsetOrigin(origin, 0, 0, -0.02);
+    expect(flat.x).toBeCloseTo(1);
+    expect(flat.z).toBeCloseTo(1.98);
+    const turned = offsetOrigin(origin, 90, 0, -0.02);
+    expect(turned.x).toBeCloseTo(1.02);
+    expect(turned.z).toBeCloseTo(2);
+
+    const scene = buildWalkthroughScene(
+      design({
+        fixtures: [],
+        furniture: [],
+        carcasses: [
+          {
+            id: "base",
+            size: 600,
+            depth: 600,
+            mount: "floor",
+            position: { x: 1000, y: 2000 },
+            rotation: 90,
+            fittingType: "plain",
+            fittingLabel: "",
+            applianceType: null,
+            applianceLabel: null,
+          },
+        ],
+      }),
+    );
+    const carcass = scene.items.find((item) => item.id === "base");
+    const top = scene.items.find((item) => item.id === "base-top");
+    expect(carcass).toBeDefined();
+    expect(top).toBeDefined();
+    if (!carcass || !top) return;
+    const overhang = offsetOrigin(carcass.origin, carcass.rotation, 0, -0.02);
+    expect(top.origin.x).toBeCloseTo(overhang.x);
+    expect(top.origin.z).toBeCloseTo(overhang.z);
+    expect(top.rotation).toBe(90);
   });
 });

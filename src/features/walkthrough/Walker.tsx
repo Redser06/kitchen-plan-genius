@@ -2,13 +2,25 @@ import { useEffect, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import type { PerspectiveCamera } from "three";
 import { EYE_HEIGHT, constrainWalker, type WalkthroughScene } from "./plan-scene";
-import { publishWalkPose } from "./walk-pose";
+
+export interface WalkPose {
+  x: number;
+  z: number;
+  yaw: number;
+  locked: boolean;
+}
 
 const LOOK_SPEED = 0.0022;
 const WALK_SPEED = 1.45;
 const RUN_SPEED = 2.6;
 
-export function Walker({ scene }: { scene: WalkthroughScene }) {
+export function Walker({
+  scene,
+  onPose,
+}: {
+  scene: WalkthroughScene;
+  onPose: (pose: WalkPose) => void;
+}) {
   const { camera, gl } = useThree();
   const keys = useRef<Record<string, boolean>>({});
   const yaw = useRef(scene.spawn.yaw);
@@ -17,6 +29,8 @@ export function Walker({ scene }: { scene: WalkthroughScene }) {
   const moved = useRef(false);
   const sceneRef = useRef(scene);
   sceneRef.current = scene;
+  const onPoseRef = useRef(onPose);
+  onPoseRef.current = onPose;
 
   const placeAtSpawn = () => {
     const placed = placeWalker(camera as PerspectiveCamera, sceneRef.current);
@@ -29,6 +43,21 @@ export function Walker({ scene }: { scene: WalkthroughScene }) {
     const placed = placeWalker(camera as PerspectiveCamera, sceneRef.current);
     yaw.current = placed.yaw;
     pitch.current = placed.pitch;
+    onPoseRef.current({
+      x: sceneRef.current.spawn.x,
+      z: sceneRef.current.spawn.z,
+      yaw: placed.yaw,
+      locked: false,
+    });
+    return () => {
+      const current = sceneRef.current;
+      onPoseRef.current({
+        x: current.spawn.x,
+        z: current.spawn.z,
+        yaw: current.spawn.yaw,
+        locked: false,
+      });
+    };
   }, [camera]);
 
   useEffect(() => {
@@ -48,7 +77,7 @@ export function Walker({ scene }: { scene: WalkthroughScene }) {
     };
     const lockChange = () => {
       locked.current = document.pointerLockElement === element;
-      publishWalkPose({
+      onPoseRef.current({
         x: camera.position.x,
         z: camera.position.z,
         yaw: yaw.current,
@@ -113,7 +142,7 @@ export function Walker({ scene }: { scene: WalkthroughScene }) {
     // Hold the doorway spawn until the user actually looks or walks.
     if (!moved.current) {
       placeAtSpawn();
-      publishWalkPose({
+      onPoseRef.current({
         x: camera.position.x,
         z: camera.position.z,
         yaw: yaw.current,
@@ -125,7 +154,7 @@ export function Walker({ scene }: { scene: WalkthroughScene }) {
     camera.position.set(next.x, EYE_HEIGHT, next.z);
     camera.rotation.order = "YXZ";
     camera.rotation.set(pitch.current, yaw.current, 0);
-    publishWalkPose({ x: next.x, z: next.z, yaw: yaw.current, locked: locked.current });
+    onPoseRef.current({ x: next.x, z: next.z, yaw: yaw.current, locked: locked.current });
   });
 
   return null;

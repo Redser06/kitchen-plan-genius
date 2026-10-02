@@ -12,10 +12,10 @@ export function KitchenRoom({
   scene: WalkthroughScene;
   mode: "walk" | "orbit";
   selectedId: string | null;
-  onSelect: (id: string) => void;
+  onSelect: (id: string | null) => void;
 }) {
-  const floorGeometry = usePolygonGeometry(scene.slab.polygon);
-  const centroid = polygonCentroid(scene.slab.polygon);
+  const floorGeometry = usePolygonGeometry(scene.floor);
+  const centroid = polygonCentroid(scene.floor);
 
   return (
     <group>
@@ -41,7 +41,19 @@ export function KitchenRoom({
         color="#fff1d2"
       />
 
-      <mesh geometry={floorGeometry} position={[0, -0.001, 0]} receiveShadow>
+      <mesh
+        geometry={floorGeometry}
+        position={[0, -0.001, 0]}
+        receiveShadow
+        onClick={
+          mode === "orbit"
+            ? (event) => {
+                event.stopPropagation();
+                onSelect(null);
+              }
+            : undefined
+        }
+      >
         <FloorMaterial color={scene.palette.floor} />
       </mesh>
       {mode === "walk" && (
@@ -91,7 +103,7 @@ function ItemMesh({
   handle: string;
   selected: boolean;
   interactive: boolean;
-  onSelect: (id: string) => void;
+  onSelect: (id: string | null) => void;
 }) {
   const transparent = item.role === "window";
   const showFront = item.role === "cabinet" && finish !== "Slab";

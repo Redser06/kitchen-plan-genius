@@ -1,11 +1,18 @@
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Component, useEffect, useMemo, useRef, type ReactNode } from "react";
+import {
+  Component,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import type { KitchenDesign } from "../../domain/types";
 import { KitchenRoom } from "./KitchenRoom";
-import { Walker } from "./Walker";
+import { Walker, type WalkPose } from "./Walker";
 import { buildWalkthroughScene, polygonCentroid, type WalkthroughScene } from "./plan-scene";
-import { useWalkPose } from "./walk-pose";
 
 export default function WalkthroughView({
   design,
@@ -19,9 +26,17 @@ export default function WalkthroughView({
   onSelect: (id: string | null) => void;
 }) {
   const scene = useMemo(() => buildWalkthroughScene(design), [design]);
+  const pose = useWalkPose(scene.spawn);
   const cabinetCount = new Set(
     scene.items.filter((item) => item.role === "cabinet").map((item) => item.sourceId),
   ).size;
+  const walkKey = [
+    scene.floor.map((point) => `${point.x.toFixed(2)},${point.z.toFixed(2)}`).join(";"),
+    scene.spawn.x.toFixed(2),
+    scene.spawn.z.toFixed(2),
+    scene.spawn.yaw.toFixed(2),
+    scene.ceilingHeight.toFixed(2),
+  ].join("|");
 
   return (
     <div style={{ position: "absolute", inset: 0 }}>
@@ -34,16 +49,15 @@ export default function WalkthroughView({
             gl.setClearColor("#efe6da");
           }}
         >
-          <KitchenRoom
-            scene={scene}
-            mode={mode}
-            selectedId={selectedId}
-            onSelect={(id) => onSelect(id)}
-          />
-          {mode === "walk" ? <Walker scene={scene} /> : <OrbitRig scene={scene} />}
+          <KitchenRoom scene={scene} mode={mode} selectedId={selectedId} onSelect={onSelect} />
+          {mode === "walk" ? (
+            <Walker key={walkKey} scene={scene} onPose={pose.publish} />
+          ) : (
+            <OrbitRig scene={scene} />
+          )}
         </Canvas>
       </WebglBoundary>
-      <Hud scene={scene} mode={mode} cabinetCount={cabinetCount} />
+      <Hud scene={scene} mode={mode} cabinetCount={cabinetCount} pose={pose.current} />
     </div>
   );
 }
@@ -51,9 +65,9 @@ export default function WalkthroughView({
 function OrbitRig({ scene }: { scene: WalkthroughScene }) {
   const { camera, gl } = useThree();
   const controls = useRef<OrbitControls | null>(null);
-  const polygonRef = useRef(scene.slab.polygon);
-  polygonRef.current = scene.slab.polygon;
-  const roomKey = scene.slab.polygon
+  const polygonRef = useRef(scene.floor);
+  polygonRef.current = scene.floor;
+  const roomKey = scene.floor
     .map((point) => `${point.x.toFixed(2)},${point.z.toFixed(2)}`)
     .join(";");
 
@@ -90,18 +104,19 @@ function Hud({
   scene,
   mode,
   cabinetCount,
+  pose,
 }: {
   scene: WalkthroughScene;
   mode: "walk" | "orbit";
   cabinetCount: number;
+  pose: WalkPose;
 }) {
-  const pose = useWalkPose();
   const hint =
     mode === "walk"
       ? pose.locked
         ? "WASD to walk · Shift to move faster · Esc to release the mouse"
         : "Click the room to look around · WASD to walk"
-      : "Drag to orbit · Scroll to zoom · Click a unit to select it";
+      : "Drag to orbit · Scroll to zoom · Click a unit to select it · Click the floor to clear";
 
   return (
     <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
@@ -116,15 +131,14 @@ function Hud({
         </div>
       )}
       <div style={hintStyle}>{hint}</div>
-      {mode === "walk" && <Minimap scene={scene} />}
+      {mode === "walk" && <Minimap scene={scene} pose={pose} />}
       {mode === "walk" && pose.locked && <div style={crosshairStyle} />}
     </div>
   );
 }
 
-function Minimap({ scene }: { scene: WalkthroughScene }) {
-  const pose = useWalkPose();
-  const points = scene.slab.polygon;
+function Minimap({ scene, pose }: { scene: WalkthroughScene; pose: WalkPose }) {
+  const points = scene.floor;
   const minX = Math.min(...points.map((point) => point.x));
   const maxX = Math.max(...points.map((point) => point.x));
   const minZ = Math.min(...points.map((point) => point.z));
@@ -210,6 +224,40 @@ const minimapStyle = {
   borderRadius: 12,
   boxShadow: "0 8px 24px rgba(43,36,32,0.12)",
 };
+
+function useWalkPose(spawn: WalkthroughScene["spawn"]) {
+  const [current, setCurrent] = useState<WalkPose>({
+    x: spawn.x,
+    z: spawn.z,
+    yaw: spawn.yaw,
+    locked: false,
+  });
+  const poseRef = useRef(current);
+
+  const publish = useCallback((next: WalkPose) => {
+    const prev = poseRef.current;
+    const yawDelta = Math.abs(
+      Math.atan2(Math.sin(prev.yaw - next.yaw), Math.cos(prev.yaw - next.yaw)),
+    );
+    if (
+      Math.hypot(prev.x - next.x, prev.z - next.z) < 0.03 &&
+      yawDelta < 0.04 &&
+      prev.locked === next.locked
+    ) {
+      return;
+    }
+    poseRef.current = next;
+    setCurrent(next);
+  }, []);
+
+  useEffect(() => {
+    const next = { x: spawn.x, z: spawn.z, yaw: spawn.yaw, locked: false };
+    poseRef.current = next;
+    setCurrent(next);
+  }, [spawn.x, spawn.z, spawn.yaw]);
+
+  return { current, publish };
+}
 
 const crosshairStyle = {
   position: "absolute" as const,

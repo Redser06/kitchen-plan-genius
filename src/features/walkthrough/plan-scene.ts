@@ -1,8 +1,8 @@
-// Kitchen plan → a single-level scene graph.
+// Kitchen plan → a walkable room.
 //
-// The shape follows Pascal Editor's ideas (site, building, level, wall, slab,
-// zone, item) without depending on @pascal-app/*. Measurements enter in
-// millimetres and leave in metres. Plan X stays world X; plan Y becomes world Z.
+// Measurements enter in millimetres and leave in metres. Plan X stays world X;
+// plan Y becomes world Z. Wall and opening math stays private; the renderer
+// only sees the floor polygon, collision solids, and placed items.
 
 import type { Carcass, Fixture, Furniture, KitchenDesign, Vec2 } from "../../domain/types";
 
@@ -39,9 +39,8 @@ export type ItemRole =
   | "backsplash"
   | "light";
 
-export interface WallNode {
+interface WallNode {
   id: string;
-  kind: "wall";
   start: PlanPoint;
   end: PlanPoint;
   length: number;
@@ -59,7 +58,7 @@ export interface WallSolid {
   rotationY: number;
 }
 
-export interface OpeningNode {
+interface OpeningNode {
   id: string;
   kind: "door" | "window";
   wallId: string;
@@ -69,23 +68,8 @@ export interface OpeningNode {
   head: number;
 }
 
-export interface SlabNode {
-  id: string;
-  kind: "slab";
-  polygon: PlanPoint[];
-  thickness: number;
-}
-
-export interface ZoneNode {
-  id: string;
-  kind: "zone";
-  name: string;
-  polygon: PlanPoint[];
-}
-
 export interface SceneItem {
   id: string;
-  kind: "item";
   role: ItemRole;
   sourceId: string;
   label: string;
@@ -100,14 +84,8 @@ export interface SceneItem {
 }
 
 export interface WalkthroughScene {
-  siteName: string;
-  buildingName: string;
-  levelElevation: number;
-  walls: WallNode[];
+  floor: PlanPoint[];
   solids: WallSolid[];
-  openings: OpeningNode[];
-  slab: SlabNode;
-  zone: ZoneNode;
   items: SceneItem[];
   ceilingHeight: number;
   palette: KitchenDesign["colours"];
@@ -171,29 +149,21 @@ export function buildWalkthroughScene(design: KitchenDesign): WalkthroughScene {
     ...lightItems(source.fixtures, ceilingHeight),
   ];
 
-  const scene: WalkthroughScene = {
-    siteName: "Kitchen site",
-    buildingName: "Kitchen",
-    levelElevation: 0,
-    walls,
+  return {
+    floor: polygon,
     solids: walls.flatMap((wall) =>
       solidsForWall(
         wall,
         openings.filter((opening) => opening.wallId === wall.id),
       ),
     ),
-    openings,
-    slab: { id: "slab-floor", kind: "slab", polygon, thickness: 0.08 },
-    zone: { id: "zone-kitchen", kind: "zone", name: "Kitchen", polygon },
     items,
     ceilingHeight,
     palette: { ...source.colours },
     cabinetFinish: source.materials.cabinetFinish,
     usedSample: !usable,
-    spawn: { x: 0, z: 0, yaw: 0 },
+    spawn: spawnFor(polygon, walls, openings, items),
   };
-  scene.spawn = spawnFor(scene);
-  return scene;
 }
 
 export interface WalkerPose {
@@ -201,22 +171,31 @@ export interface WalkerPose {
   z: number;
 }
 
-/** Keep an eye-level walker inside the zone and out of floor-standing items. */
+/** Keep an eye-level walker inside the floor polygon and out of floor-standing items. */
 export function constrainWalker(
   pose: WalkerPose,
   scene: WalkthroughScene,
   radius = PLAYER_RADIUS,
 ): WalkerPose {
-  let next = pushInside(pose.x, pose.z, scene.zone.polygon, radius);
+  return keepInside(pose, scene.floor, scene.items, radius);
+}
+
+function keepInside(
+  pose: WalkerPose,
+  floor: PlanPoint[],
+  items: SceneItem[],
+  radius: number,
+): WalkerPose {
+  let next = pushInside(pose.x, pose.z, floor, radius);
   for (let pass = 0; pass < 3; pass++) {
-    for (const item of scene.items) {
+    for (const item of items) {
       if (!item.blocksWalk || !overlapsItem(next.x, next.z, item, radius)) continue;
       const options = exitCandidates(next.x, next.z, item, radius)
-        .map((candidate) => pushInside(candidate.x, candidate.z, scene.zone.polygon, radius))
+        .map((candidate) => pushInside(candidate.x, candidate.z, floor, radius))
         .filter(
           (candidate) =>
-            pointInPolygon(candidate.x, candidate.z, scene.zone.polygon) &&
-            !scene.items.some(
+            pointInPolygon(candidate.x, candidate.z, floor) &&
+            !items.some(
               (other) => other.blocksWalk && overlapsItem(candidate.x, candidate.z, other, radius),
             ),
         )
@@ -225,7 +204,7 @@ export function constrainWalker(
         );
       next = options[0] ?? pushOutOfItem(next.x, next.z, item, radius);
     }
-    next = pushInside(next.x, next.z, scene.zone.polygon, radius);
+    next = pushInside(next.x, next.z, floor, radius);
   }
   return next;
 }
@@ -256,7 +235,6 @@ function buildWalls(polygon: PlanPoint[], height: number, ccw: boolean): WallNod
     const inward = ccw ? left : { x: -left.x, z: -left.z };
     return {
       id: `wall-${index}`,
-      kind: "wall",
       start,
       end,
       length,
@@ -445,7 +423,6 @@ function applianceItems(
   if (!type) return [];
   const label = carcass.applianceLabel || type;
   const base = {
-    kind: "item" as const,
     role: "appliance" as const,
     sourceId: carcass.id,
     label,
@@ -631,8 +608,8 @@ function lightItems(fixtures: Fixture[], ceilingHeight: number): SceneItem[] {
     );
 }
 
-function boxItem(item: Omit<SceneItem, "kind">): SceneItem {
-  return { kind: "item", ...item };
+function boxItem(item: SceneItem): SceneItem {
+  return item;
 }
 
 function pointAlong(wall: WallNode, distance: number): PlanPoint {
@@ -643,7 +620,7 @@ function pointAlong(wall: WallNode, distance: number): PlanPoint {
   };
 }
 
-function offsetOrigin(
+export function offsetOrigin(
   origin: PlanPoint,
   rotationDeg: number,
   localX: number,
@@ -683,20 +660,25 @@ function shade(hex: string, amount: number): string {
   return `#${hexByte(channel(0))}${hexByte(channel(2))}${hexByte(channel(4))}`;
 }
 
-function spawnFor(scene: WalkthroughScene): WalkthroughScene["spawn"] {
-  const centroid = polygonCentroid(scene.zone.polygon);
-  const door = scene.openings.find((opening) => opening.kind === "door");
+function spawnFor(
+  floor: PlanPoint[],
+  walls: WallNode[],
+  openings: OpeningNode[],
+  items: SceneItem[],
+): WalkthroughScene["spawn"] {
+  const centroid = polygonCentroid(floor);
+  const door = openings.find((opening) => opening.kind === "door");
   let x = centroid.x;
   let z = centroid.z;
   if (door) {
-    const wall = scene.walls.find((candidate) => candidate.id === door.wallId);
+    const wall = walls.find((candidate) => candidate.id === door.wallId);
     if (wall) {
       const at = pointAlong(wall, door.along);
       x = at.x + wall.inward.x * 0.9;
       z = at.z + wall.inward.z * 0.9;
     }
   }
-  const placed = constrainWalker({ x, z }, scene, 0.28);
+  const placed = keepInside({ x, z }, floor, items, 0.28);
   const dx = centroid.x - placed.x;
   const dz = centroid.z - placed.z;
   return { ...placed, yaw: Math.atan2(-dx, -dz) };

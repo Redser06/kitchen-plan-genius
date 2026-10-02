@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { KitchenDesign } from "../../domain/types";
+import { wallCutawayOpacity } from "./cutaway";
 import {
   buildWalkthroughScene,
   constrainWalker,
@@ -165,6 +166,149 @@ describe("buildWalkthroughScene", () => {
     expect(scene.spawn.z).toBeCloseTo(0.9, 1);
     expect(pointInPolygon(scene.spawn.x, scene.spawn.z, scene.floor)).toBe(true);
     expect(forwardX * dx + forwardZ * dz).toBeGreaterThan(0);
+  });
+
+  it("paints cabinet fronts from the finish and covers them with a fridge face", () => {
+    const shaker = buildWalkthroughScene(design());
+    expect(shaker.items.find((item) => item.id === "base")).toMatchObject({
+      profile: "shaker",
+      showFront: true,
+    });
+    expect(shaker.items.find((item) => item.id === "base-hob")?.appliance).toBe("hob");
+
+    const beadboard = buildWalkthroughScene(
+      design({
+        materials: { ...design().materials, cabinetFinish: "Beadboard" },
+      }),
+    );
+    const slab = buildWalkthroughScene(
+      design({
+        materials: { ...design().materials, cabinetFinish: "Slab" },
+      }),
+    );
+    expect(beadboard.items.find((item) => item.id === "base")?.profile).toBe("beadboard");
+    expect(slab.items.find((item) => item.id === "base")?.profile).toBe("slab");
+
+    const housed = buildWalkthroughScene(
+      design({
+        carcasses: [
+          {
+            id: "fridge",
+            size: 600,
+            depth: 600,
+            mount: "tall",
+            position: { x: 200, y: 200 },
+            rotation: 0,
+            fittingType: "larder",
+            fittingLabel: "Larder",
+            applianceType: "fridge",
+            applianceLabel: "Fridge",
+          },
+        ],
+      }),
+    );
+    const housing = housed.items.find((item) => item.id === "fridge" && item.role === "cabinet");
+    expect(housing?.showFront).toBe(false);
+    expect(housed.items.find((item) => item.role === "appliance")?.appliance).toBe("fridge");
+  });
+
+  it("places sockets inside the room and skips one that sits in a doorway", () => {
+    const scene = buildWalkthroughScene(
+      design({
+        carcasses: [],
+        furniture: [],
+        fixtures: [
+          { id: "door", type: "door", wallIndex: 0, t: 0.5, width: 900 },
+          { id: "socket", type: "socket", wallIndex: 1, t: 0.5 },
+          { id: "switch", type: "switch", wallIndex: 2, t: 0.25 },
+          { id: "blocked", type: "socket", wallIndex: 0, t: 0.5 },
+        ],
+      }),
+    );
+    const socket = scene.items.find((item) => item.id === "socket");
+    const switched = scene.items.find((item) => item.id === "switch");
+    expect(socket?.role).toBe("socket");
+    expect(switched?.role).toBe("switch");
+    expect(scene.items.find((item) => item.id === "blocked")).toBeUndefined();
+    if (!socket || !switched) return;
+
+    const center = offsetOrigin(
+      socket.origin,
+      socket.rotation,
+      socket.size[0] / 2,
+      socket.size[2] / 2,
+    );
+    expect(pointInPolygon(center.x, center.z, scene.floor)).toBe(true);
+    expect(center.x).toBeGreaterThan(4);
+    expect(center.x).toBeLessThan(4.2);
+    expect(socket.elevation).toBeGreaterThan(0.35);
+    expect(socket.elevation).toBeLessThan(0.55);
+    expect(switched.elevation).toBeGreaterThan(1);
+  });
+
+  it("matches the shared work triangle, including a unit rotated 90 degrees", () => {
+    const scene = buildWalkthroughScene(
+      design({
+        carcasses: [
+          {
+            id: "sink",
+            size: 600,
+            depth: 600,
+            mount: "floor",
+            position: { x: 1000, y: 2000 },
+            rotation: 90,
+            fittingType: "plain",
+            fittingLabel: "",
+            applianceType: "sink",
+            applianceLabel: "Sink",
+          },
+          {
+            id: "hob",
+            size: 600,
+            depth: 600,
+            mount: "floor",
+            position: { x: 3000, y: 2000 },
+            rotation: 0,
+            fittingType: "plain",
+            fittingLabel: "",
+            applianceType: "hob",
+            applianceLabel: "Hob",
+          },
+          {
+            id: "fridge",
+            size: 600,
+            depth: 600,
+            mount: "tall",
+            position: { x: 4800, y: 800 },
+            rotation: 0,
+            fittingType: "larder",
+            fittingLabel: "",
+            applianceType: "fridge",
+            applianceLabel: "Fridge",
+          },
+        ],
+      }),
+    );
+
+    expect(scene.workTriangle?.sink.x).toBeCloseTo(0.7);
+    expect(scene.workTriangle?.sink.z).toBeCloseTo(2.3);
+    expect(scene.workTriangle?.hob.x).toBeCloseTo(3.3);
+    expect(scene.workTriangle?.hob.z).toBeCloseTo(2.3);
+    expect(scene.workTriangle?.elevation).toBeGreaterThan(0.8);
+  });
+
+  it("fades a wall the camera is outside, and a wall the walker is standing against", () => {
+    const scene = buildWalkthroughScene(design({ carcasses: [], furniture: [] }));
+    const south = scene.solids.filter((solid) => solid.outward.z < -0.5);
+    expect(south.length).toBeGreaterThan(0);
+    for (const solid of south) {
+      expect(wallCutawayOpacity({ x: solid.center[0], z: -1.5 }, solid, "orbit")).toBeLessThan(0.2);
+    }
+    const pier = south.find((solid) => solid.size[1] > 2 && solid.center[0] < 1.5);
+    expect(pier).toBeDefined();
+    if (!pier) return;
+    expect(wallCutawayOpacity({ x: pier.center[0], z: 1.6 }, pier, "walk")).toBe(1);
+    expect(wallCutawayOpacity({ x: pier.center[0], z: 0.28 }, pier, "walk")).toBeLessThan(0.5);
   });
 });
 

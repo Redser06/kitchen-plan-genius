@@ -3,6 +3,7 @@
 // ============================================================================
 
 import { create } from 'zustand';
+import { workTriangleOf } from '../domain/geometry';
 import type { KitchenDesign, Carcass, Furniture, Fixture, Vec2, DesignAnalysis, Materials, ColourScheme } from '../domain/types';
 
 function defaultDesign(): KitchenDesign {
@@ -50,18 +51,7 @@ function computeAnalysis(design: KitchenDesign): DesignAnalysis {
   if (lightRatio >= 0.3) rating = 'excellent'; else if (lightRatio >= 0.2) rating = 'good'; else if (lightRatio >= 0.1) rating = 'adequate';
   const light = { floorAreaM2, glazingAreaM2, lightRatio, rating };
 
-  const sinkC = carcasses.find((c) => c.applianceType === 'sink');
-  const hobC = carcasses.find((c) => c.applianceType === 'hob');
-  const fridgeC = carcasses.find((c) => c.applianceType === 'fridge' || c.applianceType === 'fridge-american');
-  let triangle: any = null;
-  if (sinkC && hobC && fridgeC) {
-    const ctr = (c: Carcass) => ({ x: c.position.x + c.size / 2, y: c.position.y + c.depth / 2 });
-    const s = ctr(sinkC), h = ctr(hobC), f = ctr(fridgeC);
-    const d = (a: Vec2, b: Vec2) => Math.hypot(a.x - b.x, a.y - b.y);
-    const perimeter = d(s, h) + d(h, f) + d(f, s);
-    const status = (perimeter > 6600 || [d(s,h), d(h,f), d(f,s)].some(l => l < 1200 || l > 2700)) ? 'warning' : 'ok';
-    triangle = { sink: s, hob: h, fridge: f, perimeter, status };
-  }
+  const triangle = workTriangleOf(carcasses);
 
   let walkway: any = null;
   if (furniture.length > 0 && carcasses.length > 0) {
@@ -112,7 +102,6 @@ interface KitchenState {
   tool: Tool;
   selectedCarcassSize: Carcass['size'];
   viewMode: ViewMode;
-  walkIndex: number;
   sheetTab: SheetTab;
   scale: number;
   position: Vec2;
@@ -145,7 +134,6 @@ interface KitchenState {
   setTool: (t: Tool) => void;
   setSelectedCarcassSize: (s: Carcass['size']) => void;
   setViewMode: (v: ViewMode) => void;
-  setWalkIndex: (i: number) => void;
   setSheetTab: (t: SheetTab) => void;
   setScale: (s: number) => void;
   setPosition: (p: Vec2) => void;
@@ -182,7 +170,6 @@ export const useStore = create<KitchenState>((set, get) => ({
   tool: 'select',
   selectedCarcassSize: 600,
   viewMode: '2d',
-  walkIndex: 0,
   sheetTab: null,
   scale: 1,
   position: { x: 150, y: 65 },
@@ -218,7 +205,6 @@ export const useStore = create<KitchenState>((set, get) => ({
   setTool: (t) => set({ tool: t }),
   setSelectedCarcassSize: (s) => set({ selectedCarcassSize: s }),
   setViewMode: (v) => set({ viewMode: v }),
-  setWalkIndex: (i) => set({ walkIndex: i }),
   setSheetTab: (t) => set({ sheetTab: t }),
   setScale: (s) => set({ scale: s }),
   setPosition: (p) => set({ position: p }),

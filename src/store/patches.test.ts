@@ -76,6 +76,22 @@ describe("patch history", () => {
     });
   });
 
+  it("undo restores a deleted carcass, furniture item, and fixture", () => {
+    useStore.getState().removeCarcass("c1");
+    expect(useStore.getState().design.carcasses.some((carcass) => carcass.id === "c1")).toBe(false);
+    expect(useStore.getState().historyIndex).toBe(1);
+    useStore.getState().undo();
+    expect(useStore.getState().design.carcasses.some((carcass) => carcass.id === "c1")).toBe(true);
+
+    useStore.getState().removeFurniture("f1");
+    useStore.getState().undo();
+    expect(useStore.getState().design.furniture.some((item) => item.id === "f1")).toBe(true);
+
+    useStore.getState().removeFixture("fx1");
+    useStore.getState().undo();
+    expect(useStore.getState().design.fixtures.some((item) => item.id === "fx1")).toBe(true);
+  });
+
   it("records a ceiling-height drag as a single step", () => {
     useStore.getState().updateRoomHeight(2500, { recordHistory: false });
     useStore.getState().updateRoomHeight(2700, { recordHistory: false });

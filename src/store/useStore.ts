@@ -50,7 +50,6 @@ interface KitchenState {
   tool: Tool;
   selectedCarcassSize: Carcass['size'];
   viewMode: ViewMode;
-  walkIndex: number;
   sheetTab: SheetTab;
   scale: number;
   position: Vec2;
@@ -83,7 +82,6 @@ interface KitchenState {
   setTool: (t: Tool) => void;
   setSelectedCarcassSize: (s: Carcass['size']) => void;
   setViewMode: (v: ViewMode) => void;
-  setWalkIndex: (i: number) => void;
   setSheetTab: (t: SheetTab) => void;
   setScale: (s: number) => void;
   setPosition: (p: Vec2) => void;
@@ -129,7 +127,6 @@ export const useStore = create<KitchenState>((set, get) => ({
   tool: 'select',
   selectedCarcassSize: 600,
   viewMode: '2d',
-  walkIndex: 0,
   sheetTab: null,
   scale: 1,
   position: { x: 150, y: 65 },
@@ -155,7 +152,12 @@ export const useStore = create<KitchenState>((set, get) => ({
     Object.assign(carcass, patch);
     return patchDesign(s, d, options);
   }),
-  removeCarcass: (id) => set((s) => { const d = cloneDesign(s.design); d.carcasses = d.carcasses.filter((c) => c.id !== id); return { design: d, analysis: computeAnalysis(d), selectedId: s.selectedId === id ? null : s.selectedId }; }),
+  removeCarcass: (id) => set((s) => {
+    if (!s.design.carcasses.some((item) => item.id === id)) return {};
+    const d = cloneDesign(s.design);
+    d.carcasses = d.carcasses.filter((item) => item.id !== id);
+    return { ...commit(s, d), selectedId: s.selectedId === id ? null : s.selectedId };
+  }),
   addCarcass: (c) => set((s) => { const d = cloneDesign(s.design); d.carcasses.push(c); return commit(s, d); }),
   updateFurniture: (id, patch, options) => set((s) => {
     const d = cloneDesign(s.design);
@@ -164,9 +166,19 @@ export const useStore = create<KitchenState>((set, get) => ({
     Object.assign(furniture, patch);
     return patchDesign(s, d, options);
   }),
-  removeFurniture: (id) => set((s) => { const d = cloneDesign(s.design); d.furniture = d.furniture.filter((f) => f.id !== id); return { design: d, analysis: computeAnalysis(d), selectedId: s.selectedId === id ? null : s.selectedId }; }),
+  removeFurniture: (id) => set((s) => {
+    if (!s.design.furniture.some((item) => item.id === id)) return {};
+    const d = cloneDesign(s.design);
+    d.furniture = d.furniture.filter((item) => item.id !== id);
+    return { ...commit(s, d), selectedId: s.selectedId === id ? null : s.selectedId };
+  }),
   addFurniture: (f) => set((s) => { const d = cloneDesign(s.design); d.furniture.push(f); return commit(s, d); }),
-  removeFixture: (id) => set((s) => { const d = cloneDesign(s.design); d.fixtures = d.fixtures.filter((f) => f.id !== id); return { design: d, analysis: computeAnalysis(d), selectedId: s.selectedId === id ? null : s.selectedId }; }),
+  removeFixture: (id) => set((s) => {
+    if (!s.design.fixtures.some((item) => item.id === id)) return {};
+    const d = cloneDesign(s.design);
+    d.fixtures = d.fixtures.filter((item) => item.id !== id);
+    return { ...commit(s, d), selectedId: s.selectedId === id ? null : s.selectedId };
+  }),
   addFixture: (f) => set((s) => { const d = cloneDesign(s.design); d.fixtures.push(f); return commit(s, d); }),
   updateColours: (patch) => set((s) => { const d = cloneDesign(s.design); d.colours = { ...d.colours, ...patch }; return commit(s, d); }),
   updateMaterials: (patch) => set((s) => { const d = cloneDesign(s.design); d.materials = { ...d.materials, ...patch }; return commit(s, d); }),
@@ -177,7 +189,6 @@ export const useStore = create<KitchenState>((set, get) => ({
   setTool: (t) => set({ tool: t }),
   setSelectedCarcassSize: (s) => set({ selectedCarcassSize: s }),
   setViewMode: (v) => set({ viewMode: v }),
-  setWalkIndex: (i) => set({ walkIndex: i }),
   setSheetTab: (t) => set({ sheetTab: t }),
   setScale: (s) => set({ scale: s }),
   setPosition: (p) => set({ position: p }),

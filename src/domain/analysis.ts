@@ -1,44 +1,12 @@
 import type {
   AnalysisIssue,
-  Carcass,
   DesignAnalysis,
   Fixture,
   KitchenDesign,
   Severity,
   Vec2,
 } from "./types";
-import { offsetOrigin } from "../features/walkthrough/plan-scene";
-
-/** Center of the axis-aligned box of a plan footprint, using the walkthrough rotation. */
-export function rotatedAabbCenter(
-  position: Vec2,
-  width: number,
-  depth: number,
-  rotation: number,
-): Vec2 {
-  const origin = { x: position.x, z: position.y };
-  const corners = [
-    offsetOrigin(origin, rotation, 0, 0),
-    offsetOrigin(origin, rotation, width, 0),
-    offsetOrigin(origin, rotation, 0, depth),
-    offsetOrigin(origin, rotation, width, depth),
-  ];
-  let minX = Infinity;
-  let maxX = -Infinity;
-  let minZ = Infinity;
-  let maxZ = -Infinity;
-  for (const corner of corners) {
-    minX = Math.min(minX, corner.x);
-    maxX = Math.max(maxX, corner.x);
-    minZ = Math.min(minZ, corner.z);
-    maxZ = Math.max(maxZ, corner.z);
-  }
-  return { x: (minX + maxX) / 2, y: (minZ + maxZ) / 2 };
-}
-
-function carcassCenter(carcass: Carcass): Vec2 {
-  return rotatedAabbCenter(carcass.position, carcass.size, carcass.depth, carcass.rotation || 0);
-}
+import { rotatedFootprintCenter, workTriangleOf } from "./geometry";
 
 function polygonArea(pts: Vec2[]): number {
   let area = 0;
@@ -81,22 +49,7 @@ export function computeAnalysis(design: KitchenDesign): DesignAnalysis {
   else if (lightRatio >= 0.1) rating = "adequate";
   const light = { floorAreaM2, glazingAreaM2, lightRatio, rating };
 
-  const sinkC = carcasses.find((carcass) => carcass.applianceType === "sink");
-  const hobC = carcasses.find((carcass) => carcass.applianceType === "hob");
-  const fridgeC = carcasses.find(
-    (carcass) => carcass.applianceType === "fridge" || carcass.applianceType === "fridge-american",
-  );
-  let triangle: DesignAnalysis["triangle"] = null;
-  if (sinkC && hobC && fridgeC) {
-    const sink = carcassCenter(sinkC);
-    const hob = carcassCenter(hobC);
-    const fridge = carcassCenter(fridgeC);
-    const legs = [distance(sink, hob), distance(hob, fridge), distance(fridge, sink)];
-    const perimeter = legs[0] + legs[1] + legs[2];
-    const status: Severity =
-      perimeter > 6600 || legs.some((leg) => leg < 1200 || leg > 2700) ? "warning" : "ok";
-    triangle = { sink, hob, fridge, perimeter, status };
-  }
+  const triangle = workTriangleOf(carcasses);
 
   let walkway: DesignAnalysis["walkway"] = null;
   if (furniture.length > 0 && carcasses.length > 0) {
@@ -140,7 +93,12 @@ export function computeAnalysis(design: KitchenDesign): DesignAnalysis {
   const waterFixtures = fixtures.filter((fixture) => fixture.type === "water");
   const wasteFixtures = fixtures.filter((fixture) => fixture.type === "waste");
   sinkCarcasses.forEach((carcass) => {
-    const center = carcassCenter(carcass);
+    const center = rotatedFootprintCenter(
+      carcass.position,
+      carcass.rotation || 0,
+      carcass.size,
+      carcass.depth,
+    );
     if (nearest(waterFixtures, center) > 1500 || nearest(wasteFixtures, center) > 1500) {
       issues.push({
         id: "plumbing-" + carcass.id,

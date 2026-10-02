@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Carcass, Furniture, KitchenDesign } from "./types";
-import { offsetOrigin } from "../features/walkthrough/plan-scene";
-import { computeAnalysis, rotatedAabbCenter } from "./analysis";
+import { computeAnalysis } from "./analysis";
 
 const colours: KitchenDesign["colours"] = {
   cabinets: "#C9B79C",
@@ -53,20 +52,6 @@ function design(overrides: Partial<KitchenDesign> = {}): KitchenDesign {
     ...overrides,
   };
 }
-
-describe("rotatedAabbCenter", () => {
-  it("matches offsetOrigin for a unit turned 90 degrees on plan", () => {
-    const center = rotatedAabbCenter({ x: 1000, y: 2000 }, 600, 500, 90);
-    const viaOffset = offsetOrigin({ x: 1000, z: 2000 }, 90, 300, 250);
-
-    expect(center).toEqual({ x: 750, y: 2300 });
-    expect(center).toEqual({ x: viaOffset.x, y: viaOffset.z });
-  });
-
-  it("keeps an unrotated footprint centered on position + size / 2", () => {
-    expect(rotatedAabbCenter({ x: 200, y: 2600 }, 800, 600, 0)).toEqual({ x: 600, y: 2900 });
-  });
-});
 
 describe("computeAnalysis", () => {
   function triangleLayout(sinkRotation: number): KitchenDesign {

@@ -8,12 +8,36 @@ function snapToGrid(value: number): number {
   return Math.round(value / GRID_MM) * GRID_MM;
 }
 
+/** Twice the signed area. Positive matches the stored outlines, where y grows downward. */
+function signedArea2(points: Vec2[]): number {
+  let sum = 0;
+  for (let i = 0; i < points.length; i++) {
+    const current = points[i];
+    const next = points[(i + 1) % points.length];
+    sum += current.x * next.y - next.x * current.y;
+  }
+  return sum;
+}
+
+/**
+ * Unit normal pointing into the polygon.
+ * A positive signed area keeps the interior on the left of each directed edge.
+ * A reversed outline flips the normal so the inset still enters the room.
+ */
+function inwardNormal(p1: Vec2, p2: Vec2, positiveArea: boolean): Vec2 {
+  const dx = p2.x - p1.x;
+  const dy = p2.y - p1.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const left = { x: -dy / len, y: dx / len };
+  return positiveArea ? left : { x: -left.x, y: -left.y };
+}
+
 /**
  * Place a floor carcass from a plan click.
  *
- * Within 400 mm of a wall, the unit rotates to that wall's angle and shifts
- * half its depth toward the polygon centroid. Farther clicks only snap to
- * the 50 mm grid. Matches the 2D placement rule from KitchenPlan.
+ * Within 400 mm of a wall, the unit rotates to that wall's angle and insets
+ * half its depth along the wall's inward normal. Farther clicks only snap to
+ * the 50 mm grid.
  */
 export function snapCarcassToNearestWall(
   points: Vec2[],
@@ -52,19 +76,13 @@ export function snapCarcassToNearestWall(
   let rotation = Math.round((Math.atan2(p2.y - p1.y, p2.x - p1.x) * 180) / Math.PI);
   while (rotation < 0) rotation += 360;
 
-  const centroid = {
-    x: points.reduce((sum, point) => sum + point.x, 0) / points.length,
-    y: points.reduce((sum, point) => sum + point.y, 0) / points.length,
-  };
-  const wallMid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
-  const towardCenter = { x: centroid.x - wallMid.x, y: centroid.y - wallMid.y };
-  const tcLen = Math.hypot(towardCenter.x, towardCenter.y) || 1;
+  const inward = inwardNormal(p1, p2, signedArea2(points) >= 0);
   const offset = depth / 2;
 
   return {
     position: {
-      x: snapToGrid(projected.x + (towardCenter.x / tcLen) * offset),
-      y: snapToGrid(projected.y + (towardCenter.y / tcLen) * offset),
+      x: snapToGrid(projected.x + inward.x * offset),
+      y: snapToGrid(projected.y + inward.y * offset),
     },
     rotation,
   };

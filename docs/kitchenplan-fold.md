@@ -11,7 +11,7 @@ kitchen-plan-genius already contains the KitchenPlan planner (see `.lovable/plan
 | Source                                                       | Destination                                            | What moved                                                                                                                                                                                            |
 | ------------------------------------------------------------ | ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `src/components/RoomShapeDesigner.tsx` (`generateRoomShape`) | `src/domain/room-shape.ts` (`startingRoomShape`)       | Rectangle, L, U, and galley outlines from a short description, including the 4200×3200 mm default, the `m x m` / `m × m` parse, and the 2400 mm galley cap. The room-shape panel calls this function. |
-| `src/components/KitchenCanvas.tsx` (place-carcass wall snap) | `src/domain/placement.ts` (`snapCarcassToNearestWall`) | 400 mm wall snap, 50 mm grid, wall-angle rotation, and a half-depth shift toward the room centroid. Placing a floor carcass still passes depth 600 mm.                                                |
+| `src/components/KitchenCanvas.tsx` (place-carcass wall snap) | `src/domain/placement.ts` (`snapCarcassToNearestWall`) | 400 mm wall snap, 50 mm grid, wall-angle rotation, and a half-depth inset along the wall's inward normal. Placing a floor carcass still passes depth 600 mm.                                          |
 
 Tests: `src/domain/room-shape.test.ts`, `src/domain/placement.test.ts`.
 

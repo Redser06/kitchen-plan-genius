@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { useStore } from '../store/useStore';
+import { startingRoomShape } from '../domain/room-shape';
 import type { Vec2 } from '../domain/types';
 
 const MM_TO_PX = 0.16;
@@ -93,23 +94,9 @@ export default function RoomShapeDesigner() {
     setRoomDraft(newPts);
   };
 
-  const generateRoomShape = (input: string): Vec2[] => {
-    const text = input.toLowerCase();
-    const m = input.match(/(\d+(?:\.\d+)?)\s*m\s*[x×]\s*(\d+(?:\.\d+)?)\s*m/i);
-    const w = m ? Math.round(parseFloat(m[1]) * 1000) : 4200;
-    const d = m ? Math.round(parseFloat(m[2]) * 1000) : 3200;
-    if (text.includes('l-shape') || text.includes('l shape'))
-      return [{ x: 0, y: 0 }, { x: w * 0.6, y: 0 }, { x: w * 0.6, y: d * 0.4 }, { x: w, y: d * 0.4 }, { x: w, y: d }, { x: 0, y: d }];
-    if (text.includes('u-shape') || text.includes('u shape'))
-      return [{ x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: d }, { x: w * 0.65, y: d }, { x: w * 0.65, y: d * 0.4 }, { x: w * 0.35, y: d * 0.4 }, { x: w * 0.35, y: d }, { x: 0, y: d }];
-    if (text.includes('galley'))
-      return [{ x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: Math.min(d, 2400) }, { x: 0, y: Math.min(d, 2400) }];
-    return [{ x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: d }, { x: 0, y: d }];
-  };
-
   const applyStartingShape = () => {
     if (!shapeInput.trim()) return;
-    const points = generateRoomShape(shapeInput);
+    const points = startingRoomShape(shapeInput);
     setRoomDraft(points);
     setShapeFeedback('Generated a starting shape — drag corners or select a wall to fine-tune.');
     setShapeInput('');

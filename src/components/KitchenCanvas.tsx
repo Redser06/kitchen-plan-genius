@@ -1,5 +1,6 @@
 import React, { useRef, useState, useCallback, useEffect, lazy, Suspense } from 'react';
 import { useStore } from '../store/useStore';
+import { snapCarcassToNearestWall } from '../domain/placement';
 import type { Vec2, ViewMode } from '../domain/types';
 
 const WalkthroughView = lazy(() => import('../features/walkthrough/WalkthroughView'));
@@ -77,41 +78,7 @@ export default function KitchenCanvas({ scale, position, setScale, setPosition, 
     if (tool === 'pan') return;
     const mm = clickToMm(e);
     if (tool === 'place-carcass') {
-      // Find nearest wall and auto-rotate to align with it
-      const pts = design.room.points;
-      let nearestWall = -1, nearestDist = 400; // 400mm snap threshold
-      let projectedPt = mm;
-      for (let i = 0; i < pts.length; i++) {
-        const p1 = pts[i], p2 = pts[(i + 1) % pts.length];
-        const dx = p2.x - p1.x, dy = p2.y - p1.y;
-        const len = Math.hypot(dx, dy) || 1;
-        const t = Math.max(0, Math.min(1, ((mm.x - p1.x) * dx + (mm.y - p1.y) * dy) / (len * len)));
-        const proj = { x: p1.x + dx * t, y: p1.y + dy * t };
-        const d = Math.hypot(mm.x - proj.x, mm.y - proj.y);
-        if (d < nearestDist) { nearestDist = d; nearestWall = i; projectedPt = proj; }
-      }
-
-      let pos = { x: Math.round(mm.x / 50) * 50, y: Math.round(mm.y / 50) * 50 };
-      let rotation = 0;
-
-      if (nearestWall >= 0) {
-        const p1 = pts[nearestWall], p2 = pts[(nearestWall + 1) % pts.length];
-        const wallAngle = Math.atan2(p2.y - p1.y, p2.x - p1.x) * 180 / Math.PI;
-        rotation = Math.round(wallAngle);
-        // Normalize to 0-360
-        while (rotation < 0) rotation += 360;
-        // Offset from wall by cabinet depth (600mm), toward room interior
-        const centroid = { x: pts.reduce((s, p) => s + p.x, 0) / pts.length, y: pts.reduce((s, p) => s + p.y, 0) / pts.length };
-        const wallMid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
-        const towardCenter = { x: centroid.x - wallMid.x, y: centroid.y - wallMid.y };
-        const tcLen = Math.hypot(towardCenter.x, towardCenter.y) || 1;
-        const offset = 300; // half the depth
-        pos = {
-          x: Math.round((projectedPt.x + towardCenter.x / tcLen * offset) / 50) * 50,
-          y: Math.round((projectedPt.y + towardCenter.y / tcLen * offset) / 50) * 50,
-        };
-      }
-
+      const { position: pos, rotation } = snapCarcassToNearestWall(design.room.points, mm, 600);
       addCarcass({ id: `carcass-${Date.now()}`, size: selectedCarcassSize, depth: 600, mount: 'floor', position: pos, rotation, label: '', fittingType: 'plain', fittingLabel: '', applianceType: null, applianceLabel: null });
       setSelected(null); setTool('select');
     } else if (tool === 'place-furniture') {

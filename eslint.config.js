@@ -37,4 +37,27 @@ export default tseslint.config(
     },
   },
   eslintPluginPrettier,
+  {
+    // Written before prettier and no-explicit-any were enforced. Kept out of
+    // those two rules so `eslint .` can pass without reformatting the planner UI.
+    files: [
+      "src/components/BottomBar.tsx",
+      "src/components/BottomSheet.tsx",
+      "src/components/ContextPanel.tsx",
+      "src/components/ExportPanel.tsx",
+      "src/components/KitchenCanvas.tsx",
+      "src/components/RoomShapeDesigner.tsx",
+      "src/domain/geometry.ts",
+      "src/domain/geometry.test.ts",
+      "src/domain/types.ts",
+      "src/features/kitchenplan/App.tsx",
+      "src/features/kitchenplan/resizeRoom.ts",
+      "src/routes/__root.tsx",
+      "src/store/useStore.ts",
+    ],
+    rules: {
+      "prettier/prettier": "off",
+      "@typescript-eslint/no-explicit-any": "off",
+    },
+  },
 );

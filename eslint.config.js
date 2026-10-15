@@ -38,8 +38,13 @@ export default tseslint.config(
   },
   eslintPluginPrettier,
   {
-    // Written before prettier and no-explicit-any were enforced. Kept out of
-    // those two rules so `eslint .` can pass without reformatting the planner UI.
+    // Justified override, not a temporary silence. These 13 files are the
+    // KitchenPlan planner surface, folded in before prettier and
+    // @typescript-eslint/no-explicit-any were enforced. Each one still fails
+    // prettier/prettier (the UI was left unformatted on purpose), and the
+    // store panels also use explicit `any` on design lookups. Cleaning that
+    // up is a formatting pass plus real types for those lookups. Drop a file
+    // from this list only after `eslint` is clean for it under both rules.
     files: [
       "src/components/BottomBar.tsx",
       "src/components/BottomSheet.tsx",

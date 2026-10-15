@@ -105,6 +105,42 @@ describe("concave wall snap", () => {
     expect(snapped).toEqual({ position: { x: 2100, y: 600 }, rotation: 90 });
     expect(pointInPolygon(snapped.position, lRoom)).toBe(true);
   });
+
+  it("breaks an outer-corner tie toward the earlier wall and stays inside", () => {
+    // (50, 50) is 50 mm from both walls that meet at the outer corner (0, 0).
+    // The top wall is earlier in the winding, so the tie uses rotation 0.
+    const snapped = snapCarcassToNearestWall(uRoom, { x: 50, y: 50 }, 600);
+    expect(snapped).toEqual({ position: { x: 50, y: 300 }, rotation: 0 });
+    expect(pointInPolygon(snapped.position, uRoom)).toBe(true);
+  });
+
+  it("insets the U notch corner near (2550, 1150) along the nearer wall", () => {
+    // 50 mm from the notch ceiling and about 71 mm from the inner leg, so the
+    // ceiling wins and the half-depth inset steps up into the room.
+    const snapped = snapCarcassToNearestWall(uRoom, { x: 2550, y: 1150 }, 600);
+    expect(snapped).toEqual({ position: { x: 2550, y: 900 }, rotation: 180 });
+    expect(pointInPolygon(snapped.position, uRoom)).toBe(true);
+  });
+});
+
+describe("reversed-winding U room", () => {
+  const reversed = [...startingRoomShape("U-shape 4m x 3m")].reverse();
+
+  it("insets the same U clicks into the room when the outline is wound the other way", () => {
+    expect(reversed[0]).toEqual({ x: 0, y: 3000 });
+    const cases: { click: Vec2; position: Vec2; rotation: number }[] = [
+      { click: { x: 2000, y: 1100 }, position: { x: 2000, y: 900 }, rotation: 0 },
+      { click: { x: 2700, y: 2500 }, position: { x: 2900, y: 2500 }, rotation: 90 },
+      { click: { x: 2550, y: 1150 }, position: { x: 2550, y: 900 }, rotation: 0 },
+      { click: { x: 50, y: 50 }, position: { x: 50, y: 300 }, rotation: 180 },
+    ];
+
+    for (const { click, position, rotation } of cases) {
+      const snapped = snapCarcassToNearestWall(reversed, click, 600);
+      expect(snapped).toEqual({ position, rotation });
+      expect(pointInPolygon(position, reversed)).toBe(true);
+    }
+  });
 });
 
 describe("snapped carcass stays inside the outline", () => {

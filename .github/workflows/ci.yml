@@ -9,12 +9,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: 22
+          # Active LTS (Node 24 Krypton). checkout/setup-node v4 ran on Node 20,
+          # which GitHub no longer provides for JavaScript actions.
+          node-version: 24
 
       - name: Install Bun
         run: npm install -g bun@1.4.3
